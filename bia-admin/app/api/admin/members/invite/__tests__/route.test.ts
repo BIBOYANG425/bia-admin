@@ -1,11 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { POST } from "../route";
 
-const mockGetUser = vi.fn();
-const mockServerFrom = vi.fn();
-const mockServiceFrom = vi.fn();
-const mockInviteUserByEmail = vi.fn();
-const mockWriteAudit = vi.fn();
+const {
+  mockGetUser,
+  mockServerFrom,
+  mockServiceFrom,
+  mockInviteUserByEmail,
+  mockWriteAudit,
+} = vi.hoisted(() => ({
+  mockGetUser: vi.fn(),
+  mockServerFrom: vi.fn(),
+  mockServiceFrom: vi.fn(),
+  mockInviteUserByEmail: vi.fn(),
+  mockWriteAudit: vi.fn(),
+}));
 
 vi.mock("@bia/shared/next/supabase/server", () => ({
   createBiaServerClient: async () => ({
@@ -28,6 +35,8 @@ vi.mock("@bia/shared", async (importActual) => {
 vi.mock("@/lib/admin/audit-log", () => ({
   writeAudit: mockWriteAudit,
 }));
+
+import { POST } from "../route";
 
 function setupServerSelfRead(
   role: "super_admin" | "editor" | "viewer" | null,
@@ -116,7 +125,7 @@ describe("POST /api/admin/members/invite", () => {
   it("403 when caller is not super_admin", async () => {
     setupServerSelfRead("editor");
     const res = await POST(
-      makeRequest({ email: "ex@y", role: "editor" }),
+      makeRequest({ email: "ex@example.com", role: "editor" }),
     );
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "role_required: super_admin" });
@@ -134,7 +143,7 @@ describe("POST /api/admin/members/invite", () => {
     setupServerSelfRead("super_admin");
     setupServiceFrom({ existingAdmin: { id: "ex" } });
     const res = await POST(
-      makeRequest({ email: "ex@y", role: "editor" }),
+      makeRequest({ email: "ex@example.com", role: "editor" }),
     );
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "already_admin" });
@@ -148,7 +157,7 @@ describe("POST /api/admin/members/invite", () => {
       insertResult: { data: null, error: { code: "23505" } },
     });
     const res = await POST(
-      makeRequest({ email: "ex@y", role: "editor" }),
+      makeRequest({ email: "ex@example.com", role: "editor" }),
     );
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "already_invited" });
@@ -167,7 +176,7 @@ describe("POST /api/admin/members/invite", () => {
       error: { message: "smtp down" },
     });
     const res = await POST(
-      makeRequest({ email: "ex@y", role: "editor" }),
+      makeRequest({ email: "ex@example.com", role: "editor" }),
     );
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({
@@ -182,7 +191,7 @@ describe("POST /api/admin/members/invite", () => {
     setupServerSelfRead("super_admin");
     const invitationRow = {
       id: "inv1",
-      email: "ex@y",
+      email: "ex@example.com",
       role: "editor",
     };
     setupServiceFrom({
@@ -192,7 +201,7 @@ describe("POST /api/admin/members/invite", () => {
     mockInviteUserByEmail.mockResolvedValue({ error: null });
 
     const res = await POST(
-      makeRequest({ email: "ex@y", role: "editor" }),
+      makeRequest({ email: "ex@example.com", role: "editor" }),
     );
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -203,7 +212,7 @@ describe("POST /api/admin/members/invite", () => {
       action: "invite_sent",
       entity_type: "admin_invitation",
       entity_id: "inv1",
-      payload: { email: "ex@y", role: "editor" },
+      payload: { email: "ex@example.com", role: "editor" },
     });
   });
 });
