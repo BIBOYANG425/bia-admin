@@ -31,7 +31,10 @@ jobs:
       - name: Read package version
         id: pkg
         working-directory: packages/bia-shared
-        run: echo "version=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
+        run: |
+          VERSION=$(jq -r .version package.json)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
 
       - name: Check if version already published
         id: check
