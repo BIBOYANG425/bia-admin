@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BIA Admin & CMS — Design Doc (rev 3)</title>
+<style>
+  :root {
+    --ink: #0a0a0b;
+    --ink-2: #27272a;
+    --ink-3: #52525b;
+    --ink-4: #71717a;
+    --line: #e4e4e7;
+    --line-soft: #f4f4f5;
+    --bg: #ffffff;
+    --bg-alt: #fafafa;
+    --bg-deep: #18181b;
+    --accent: #990000;
+    --accent-soft: #fef2f2;
+    --green: #166534; --green-bg: #dcfce7;
+    --amber: #92400e; --amber-bg: #fef3c7;
+    --gray: #52525b;  --gray-bg: #f4f4f5;
+    --blue: #1d4ed8;  --blue-bg: #dbeafe;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Inter", "SF Pro Text", system-ui, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    font-size: 15px;
+    line-height: 1.55;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 32px; }
+  .hero {
+    background: var(--bg-deep); color: #fff;
+    padding: 56px 0 48px; margin-bottom: 48px;
+    position: relative; overflow: hidden;
+  }
+  .hero::after {
+    content: ""; position: absolute; right: -120px; top: -80px;
+    width: 360px; height: 360px; background: var(--accent);
+    border-radius: 100%; opacity: 0.08; filter: blur(40px);
+  }
+  .hero-tag {
+    display: inline-block; font-size: 11px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: #d4d4d8; margin-bottom: 14px;
+    border-left: 3px solid var(--accent); padding-left: 10px;
+  }
+  .hero .rev { color: var(--accent); font-weight: 600; }
+  .hero h1 {
+    font-size: 44px; line-height: 1.05; margin: 0 0 12px;
+    font-weight: 700; letter-spacing: -0.02em;
+  }
+  .hero .sub { font-size: 17px; color: #a1a1aa; margin: 0 0 28px; max-width: 760px; }
+  .hero .meta { display: flex; gap: 32px; flex-wrap: wrap; font-size: 13px; color: #d4d4d8; }
+  .hero .meta strong { color: #71717a; font-weight: 600; display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 2px; }
+
+  section { margin-bottom: 56px; }
+  .section-head { margin-bottom: 24px; }
+  .section-head .num { font-size: 11px; font-weight: 600; color: var(--accent); letter-spacing: 0.15em; text-transform: uppercase; }
+  .section-head h2 { font-size: 28px; margin: 4px 0 6px; font-weight: 700; letter-spacing: -0.01em; }
+  .section-head .lede { color: var(--ink-3); font-size: 15px; margin: 0; max-width: 720px; }
+
+  h3 { font-size: 18px; font-weight: 600; margin: 28px 0 10px; letter-spacing: -0.005em; }
+  p { margin: 0 0 12px; }
+  ul, ol { padding-left: 22px; margin: 0 0 12px; }
+  li { margin-bottom: 4px; }
+  hr { border: none; border-top: 1px solid var(--line); margin: 56px 0; }
+
+  code, pre { font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace; }
+  code { background: var(--gray-bg); padding: 1px 6px; border-radius: 3px; font-size: 0.88em; }
+  pre {
+    background: var(--bg-deep); color: #e4e4e7; padding: 16px 20px;
+    border-radius: 6px; font-size: 12.5px; line-height: 1.55;
+    overflow-x: auto; margin: 12px 0;
+  }
+  pre code { background: none; padding: 0; color: inherit; }
+  pre .c-comment { color: #71717a; }
+  pre .c-key { color: #fbbf24; }
+  pre .c-str { color: #86efac; }
+
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 500; line-height: 1.5; }
+  .pill-red { background: var(--accent-soft); color: var(--accent); }
+  .pill-green { background: var(--green-bg); color: var(--green); }
+  .pill-amber { background: var(--amber-bg); color: var(--amber); }
+  .pill-gray { background: var(--gray-bg); color: var(--gray); }
+  .pill-blue { background: var(--blue-bg); color: var(--blue); }
+
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13.5px; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; color: var(--ink-2); background: var(--bg-alt); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  td code { font-size: 12px; }
+
+  .grid { display: grid; gap: 12px; }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid-4 { grid-template-columns: repeat(4, 1fr); }
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 800px) {
+    .grid-3, .grid-4 { grid-template-columns: 1fr 1fr; }
+    .grid-2 { grid-template-columns: 1fr; }
+  }
+  .card { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; }
+  .card .label { font-size: 11px; color: var(--ink-4); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .card .value { font-size: 14px; font-weight: 500; color: var(--ink); line-height: 1.4; }
+  .card .value strong { font-weight: 700; }
+
+  .diagram {
+    font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.5;
+    background: var(--bg-alt); border: 1px solid var(--line); border-radius: 6px;
+    padding: 18px 22px; overflow-x: auto; white-space: pre;
+    color: var(--ink-2); margin: 12px 0;
+  }
+
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 3px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+  .b-new { background: var(--accent); color: #fff; }
+  .b-extend { background: var(--amber-bg); color: var(--amber); }
+  .b-reuse { background: var(--green-bg); color: var(--green); }
+  .b-keep { background: var(--gray-bg); color: var(--gray); }
+  .b-migrate { background: var(--blue-bg); color: var(--blue); }
+
+  .swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin: 12px 0; }
+  .swatch { border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+  .swatch .chip { height: 56px; }
+  .swatch .meta { padding: 6px 8px; font-size: 11px; }
+  .swatch .meta .name { font-weight: 600; }
+  .swatch .meta .hex { color: var(--ink-4); font-family: ui-monospace, monospace; }
+
+  .mockup-wrap { background: var(--bg-alt); border: 1px solid var(--line); border-radius: 6px; padding: 16px; margin: 12px 0; }
+  .mockup { background: #fff; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; font-size: 11px; line-height: 1.4; }
+
+  .mk-shell { display: flex; min-height: 320px; }
+  .mk-side { background: var(--bg-deep); color: #d4d4d8; padding: 12px 10px; width: 175px; flex-shrink: 0; }
+  .mk-side .brand { font-weight: 700; color: #fff; font-size: 12px; margin-bottom: 12px; padding-left: 4px; }
+  .mk-side .grp { font-size: 9px; color: #71717a; text-transform: uppercase; letter-spacing: 0.08em; margin: 12px 0 4px; padding-left: 4px; }
+  .mk-side .nav { padding: 5px 8px; border-radius: 4px; font-size: 12px; margin-bottom: 1px; display: flex; align-items: center; gap: 8px; }
+  .mk-side .nav .ic { width: 12px; opacity: 0.7; }
+  .mk-side .nav.active { background: #27272a; color: #fff; }
+  .mk-side .nav.active .ic { opacity: 1; }
+  .mk-main { flex: 1; display: flex; flex-direction: column; }
+  .mk-top { border-bottom: 1px solid var(--line); padding: 9px 16px; font-size: 12px; color: var(--ink-3); display: flex; justify-content: space-between; align-items: center; }
+  .mk-top .crumbs strong { color: var(--ink); font-weight: 600; }
+  .mk-top .user { font-size: 11px; color: var(--ink-4); }
+  .mk-body { padding: 16px; flex: 1; }
+  .mk-row { padding: 8px 4px; border-bottom: 1px solid var(--line-soft); display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+
+  .dh-attn { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  .dh-attn .ac { background: #fff; border: 1px solid var(--line); border-radius: 4px; padding: 10px; }
+  .dh-attn .ac .h { display: flex; justify-content: space-between; align-items: center; font-weight: 600; font-size: 12px; }
+  .dh-attn .ac .h .n { background: var(--accent-soft); color: var(--accent); padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .dh-attn .ac .sub { font-size: 11px; color: var(--ink-4); margin-top: 4px; }
+  .btn { padding: 5px 11px; border-radius: 4px; font-size: 11px; font-weight: 500; display: inline-block; }
+  .btn-primary { background: var(--accent); color: #fff; font-weight: 600; }
+  .btn-ghost { background: #fff; border: 1px solid var(--line); color: var(--ink); }
+
+  .split-edit { display: flex; min-height: 240px; }
+  .split-edit .sl { flex: 1; border-right: 1px solid var(--line); padding: 12px; background: var(--bg-alt); }
+  .split-edit .sr { flex: 1; padding: 12px; }
+  .input-pill { background: #fff; border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; font-size: 11px; margin-bottom: 6px; }
+  .input-row { display: flex; gap: 6px; margin-bottom: 6px; }
+  .input-row > div { flex: 1; }
+  .input-label { font-size: 9px; color: var(--ink-4); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px; }
+  .preview-render h6 { font-family: "Noto Serif SC", Georgia, serif; font-weight: 700; font-size: 16px; margin: 0 0 6px; color: var(--ink); }
+  .preview-render p { font-size: 12px; color: var(--ink-2); margin: 0 0 6px; line-height: 1.55; }
+  .preview-render .img-ph { background: var(--gray-bg); height: 30px; border-radius: 3px; display: flex; align-items: center; justify-content: center; color: var(--ink-4); font-size: 9px; margin: 4px 0; }
+  .drop-zone { border: 2px dashed var(--line); padding: 14px; text-align: center; background: #fff; border-radius: 4px; font-size: 11px; color: var(--ink-4); margin-bottom: 10px; }
+  .drop-zone.filled { background: #f0fdf4; border-color: #86efac; color: var(--green); }
+  .drop-zone strong { color: var(--ink); display: block; }
+
+  .state-machine { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 14px; background: var(--bg-alt); border: 1px solid var(--line); border-radius: 6px; margin: 12px 0; font-size: 12px; }
+  .state-node { background: #fff; border: 1px solid var(--line); border-radius: 4px; padding: 6px 12px; font-weight: 500; font-family: ui-monospace, monospace; }
+  .state-node.terminal { background: var(--green-bg); color: var(--green); border-color: #86efac; }
+  .state-node.start { background: var(--gray-bg); color: var(--gray); }
+  .state-arrow { color: var(--ink-4); font-size: 14px; }
+  .state-arrow .label { font-size: 10px; color: var(--ink-4); display: block; line-height: 1; }
+
+  .ui-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line-soft); }
+  .ui-row:last-child { border: none; }
+  .ui-row .lbl { width: 130px; font-size: 11px; color: var(--ink-4); text-transform: uppercase; letter-spacing: 0.06em; flex-shrink: 0; }
+  .ui-row .ex { flex: 1; }
+
+  .repo-block { border: 1px solid var(--line); border-radius: 6px; padding: 14px 18px; background: var(--bg-alt); margin-bottom: 12px; }
+  .repo-block .repo-tag { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 2px 8px; border-radius: 3px; margin-bottom: 6px; }
+  .repo-tag.this { background: var(--accent); color: #fff; }
+  .repo-tag.uscbia { background: var(--blue-bg); color: var(--blue); }
+  .repo-tag.shared { background: var(--amber-bg); color: var(--amber); }
+
+  footer { background: var(--bg-alt); border-top: 1px solid var(--line); padding: 32px 0; margin-top: 48px; font-size: 13px; color: var(--ink-3); }
+  footer strong { color: var(--ink); }
+
+  .toc { background: var(--bg-alt); border: 1px solid var(--line); border-radius: 6px; padding: 18px 24px; margin-bottom: 32px; }
+  .toc h3 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-3); font-weight: 600; }
+  .toc ol { columns: 2; column-gap: 32px; margin: 0; padding-left: 22px; }
+  .toc a { color: var(--ink-2); text-decoration: none; font-size: 13px; }
+  .toc a:hover { color: var(--accent); }
+
+  .changelog {
+    background: var(--accent-soft); border-left: 3px solid var(--accent);
+    padding: 14px 20px; margin-bottom: 32px; border-radius: 0 4px 4px 0; font-size: 13.5px;
+  }
+  .changelog h3 { margin: 0 0 6px; color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; }
+  .changelog ul { margin: 0; padding-left: 18px; }
+  .changelog li { margin-bottom: 2px; color: var(--ink-2); }
+
+  .risk {
+    background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #ea580c;
+    padding: 14px 18px; border-radius: 0 4px 4px 0; margin: 16px 0;
+  }
+  .risk h4 { margin: 0 0 6px; color: #c2410c; font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; }
+  .risk p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+  .risk strong { color: #c2410c; }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="hero-tag">Strategic CTO Design · BIA@USC · <span class="rev">Rev 3 — single admin home, blog branding</span></div>
+    <h1>Internal Admin & CMS</h1>
+    <p class="sub">A SaaS-style dashboard at <code style="background:rgba(255,255,255,0.1);color:#fbbf24;border-radius:3px;padding:2px 6px;font-size:13px">admin.uscbia.com</code> that becomes <strong>the single home for all BIA admin</strong> — Blog, Events, Sponsors, Squad moderation, Members, plus the migrated 集运 ops. Public surfaces ship into uscbia.com, including replacing the placeholder cards on the landing-page Blog section with real database content.</p>
+    <div class="meta">
+      <div><strong>Date</strong>2026-05-08</div>
+      <div><strong>Owner</strong>Bobby Yang</div>
+      <div><strong>Status</strong>Design rev 3 — ready for review</div>
+      <div><strong>Repos</strong>BIA 新生service (admin) · uscbia.com (public)</div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<div class="changelog">
+  <h3>Rev 3 changes (since rev 2)</h3>
+  <ul>
+    <li><strong>Articles → Blog.</strong> Public routes are <code>/blog</code> and <code>/blog/[slug]</code>. The new pages replace placeholder cards in uscbia.com's existing landing-page Blog section ("Latest Dispatches" / "最新动态"). DB table stays <code>articles</code>; surfacing terminology is "blog post".</li>
+    <li><strong>集运 admin migrates into bia-admin.</strong> Reverses rev 2's "drop 集运" decision. Existing <code>uscbia.com/admin/shipping/*</code> code (merged via PR #32) gets ported into the new bia-admin app with shadcn primitives + role-gated middleware, then removed from uscbia.com. <strong>One admin home, one URL.</strong></li>
+    <li><strong>Sidebar back to 6 items</strong>: Blog · Events · Sponsors · Squad mod · 集运 · Members.</li>
+    <li><strong>Risk section added</strong> — shipping admin migration touches live operations.</li>
+  </ul>
+</div>
+
+<div class="toc">
+  <h3>Contents</h3>
+  <ol>
+    <li><a href="#decisions">Decisions at a glance</a></li>
+    <li><a href="#arch">Architecture (cross-repo)</a></li>
+    <li><a href="#auth">Auth &amp; roles</a></li>
+    <li><a href="#data">Data model</a></li>
+    <li><a href="#blog">Blog flow (the wedge)</a></li>
+    <li><a href="#events">BIA Events admin</a></li>
+    <li><a href="#sponsors">Sponsors</a></li>
+    <li><a href="#squad">Squad moderation</a></li>
+    <li><a href="#shipping">集运 admin migration</a></li>
+    <li><a href="#public">Public surfaces (uscbia.com)</a></li>
+    <li><a href="#ux">Dashboard layout &amp; UX</a></li>
+    <li><a href="#aesthetic">Aesthetic system</a></li>
+    <li><a href="#errors">Errors &amp; testing</a></li>
+    <li><a href="#deploy">Migrations, deployment, cutover</a></li>
+    <li><a href="#risks">Risks &amp; mitigations</a></li>
+    <li><a href="#out">Not in v1</a></li>
+  </ol>
+</div>
+
+<!-- DECISIONS -->
+<section id="decisions">
+  <div class="section-head">
+    <div class="num">01</div>
+    <h2>Decisions at a glance</h2>
+    <p class="lede">Every locked answer.</p>
+  </div>
+  <div class="grid grid-4">
+    <div class="card"><div class="label">Architecture</div><div class="value">Single bia-admin app at admin.uscbia.com</div></div>
+    <div class="card"><div class="label">Admin lives in</div><div class="value"><code>BIA 新生service/</code> repo</div></div>
+    <div class="card"><div class="label">Public surfaces</div><div class="value">Added to <code>uscbia.com</code> repo</div></div>
+    <div class="card"><div class="label">Database</div><div class="value">Same Supabase, reuse + extend live tables</div></div>
+    <div class="card"><div class="label">Auth</div><div class="value">Google OAuth + magic link via <code>@supabase/ssr</code></div></div>
+    <div class="card"><div class="label">Roles</div><div class="value"><strong>super_admin · editor · viewer</strong> in <code>admin_users</code></div></div>
+    <div class="card"><div class="label">Blog (was: articles)</div><div class="value">Drop HTML → publish → <code>/blog/[slug]</code> on uscbia.com</div></div>
+    <div class="card"><div class="label">Landing page Blog</div><div class="value">Replace placeholder cards with top-3 real posts</div></div>
+    <div class="card"><div class="label">Image handling</div><div class="value">Zip / external / base64 → Supabase Storage</div></div>
+    <div class="card"><div class="label">Blog workflow</div><div class="value">draft → in_review → published (super_admin)</div></div>
+    <div class="card"><div class="label">Bilingual</div><div class="value">CN and EN as separate posts</div></div>
+    <div class="card"><div class="label">BIA Events</div><div class="value">Officer CRUD · landing-page hero on uscbia.com</div></div>
+    <div class="card"><div class="label">Sponsors</div><div class="value">Internal records, logos surface on attached events</div></div>
+    <div class="card"><div class="label">Squad / 找搭子</div><div class="value">Existing user feature; admin gets moderation only</div></div>
+    <div class="card"><div class="label">集运 admin</div><div class="value">Migrate from uscbia.com/admin/shipping → bia-admin</div></div>
+    <div class="card"><div class="label">Shell layout</div><div class="value">Left sidebar with grouped sections</div></div>
+    <div class="card"><div class="label">Dashboard home</div><div class="value">"What needs you today" attention cards</div></div>
+    <div class="card"><div class="label">Blog editor</div><div class="value">Split: drop+meta left, live preview right</div></div>
+    <div class="card"><div class="label">Stack (admin)</div><div class="value">Next.js 16 · shadcn/ui · TanStack · RHF+Zod</div></div>
+    <div class="card"><div class="label">Visual</div><div class="value">Neutral zinc/slate · BIA red accent · Inter</div></div>
+  </div>
+</section>
+
+<hr>
+
+<!-- ARCH -->
+<section id="arch">
+  <div class="section-head">
+    <div class="num">02</div>
+    <h2>Architecture (cross-repo)</h2>
+    <p class="lede">Two repos, two Vercel projects, one Supabase. bia-admin is the single admin URL after cutover; uscbia.com loses <code>/admin/*</code>.</p>
+  </div>
+
+  <h3>Repo layout</h3>
+
+  <div class="repo-block">
+    <span class="repo-tag this">Repo 1 — BIA 新生service · this repo · admin home</span>
+    <div class="diagram">BIA 新生service/                     <span style="color:#71717a">← pnpm workspace root</span>
+├── bia-admin/                      <span style="color:#fbbf24">+ NEW Next.js 16 app</span>
+│   └── app/
+│       ├── login/                  <span style="color:#71717a">Google OAuth + magic link</span>
+│       └── (admin)/                <span style="color:#71717a">middleware-gated route group</span>
+│           ├── blog/               <span style="color:#fbbf24">drop, edit, preview, publish (the wedge)</span>
+│           ├── events/             <span style="color:#71717a">BIA Events CRUD + submissions queue</span>
+│           ├── sponsors/           <span style="color:#71717a">CRUD + event attachment</span>
+│           ├── squad/              <span style="color:#fbbf24">moderation: hide/feature/delete</span>
+│           ├── shipping/           <span style="color:#3b82f6">MIGRATED from uscbia.com/admin/shipping</span>
+│           │   ├── routes/  contacts/  parcels/  pack-requests/
+│           │   ├── requests/  shipments/  warehouses/
+│           └── members/            <span style="color:#71717a">invite + role mgmt</span>
+│
+├── packages/bia-shared/            <span style="color:#fbbf24">+ NEW workspace package</span>
+│   ├── types.ts                    <span style="color:#71717a">Article, Event, Sponsor, AdminUser, Role</span>
+│   ├── supabase.ts                 <span style="color:#71717a">browser/server/service-role factories</span>
+│   ├── html-sanitize.ts            <span style="color:#71717a">the upload pipeline</span>
+│   └── article-renderer.tsx        <span style="color:#71717a">prose renderer (admin preview + uscbia.com /blog reader)</span>
+│
+├── supabase/migrations/            <span style="color:#fbbf24">+ NEW (canonical migrations live here)</span>
+└── pnpm-workspace.yaml             <span style="color:#fbbf24">+ NEW</span></div>
+  </div>
+
+  <div class="repo-block">
+    <span class="repo-tag uscbia">Repo 2 — uscbia.com · /Users/mac/Documents/bia-roommate/ · existing public site</span>
+    <div class="diagram">bia-roommate/                       <span style="color:#71717a">← existing production site</span>
+└── app/
+    ├── (existing) /, /squad, /sublet, /course-rating, …   <span style="color:#71717a">untouched</span>
+    │
+    ├── blog/                       <span style="color:#fbbf24">+ NEW public reader</span>
+    │   ├── page.tsx                <span style="color:#71717a">/blog list of published posts</span>
+    │   └── [slug]/page.tsx         <span style="color:#71717a">/blog/[slug] reader</span>
+    │
+    ├── events/                     <span style="color:#fbbf24">+ NEW (light) full BIA events list</span>
+    │   └── page.tsx
+    │
+    ├── (modify) page.tsx           <span style="color:#fbbf24">replace landing Blog placeholder + add Events hero</span>
+    ├── (modify) lib/i18n.ts        <span style="color:#fbbf24">drop hardcoded blog.posts; keep heading/byline</span>
+    ├── (modify) components/EventCard <span style="color:#fbbf24">render attached sponsor logos</span>
+    └── (modify) app/squad/page.tsx <span style="color:#fbbf24">filter out hidden_at; pin featured</span>
+
+REMOVE after bia-admin reaches feature parity:
+    ├── app/admin/                  <span style="color:#3b82f6">delete after cutover (now lives in bia-admin)</span>
+    └── components/admin/           <span style="color:#3b82f6">delete after cutover</span></div>
+  </div>
+
+  <h3>Deploy &amp; data backbone</h3>
+  <div class="diagram">┌──────────────────────────────┐  ┌──────────────────────────────┐
+│  uscbia.com                  │  │  admin.uscbia.com            │
+│  (existing public site)      │  │  (NEW · the single admin)    │
+│                              │  │                              │
+│  + /blog, /blog/[slug]       │  │  shadcn shell + roles +      │
+│  + landing Blog real posts   │  │  middleware + service-role   │
+│  + Events hero on landing    │  │  in API routes               │
+│  + sponsor logos on EventCard│  │                              │
+│  + squad filter for hidden   │  │  Sections:                   │
+│                              │  │   Blog · Events · Sponsors   │
+│  Auth: anon (RLS published)  │  │   Squad mod · 集运 · Members │
+│  Old /admin removed at cutover│ │                              │
+└──────────────┬───────────────┘  └──────────────┬───────────────┘
+               │                                 │
+               │ anon read (RLS)                 │ service-role write
+               ▼                                 ▼
+   ┌──────────────────────────────────────────────────────────────┐
+   │  Supabase project ujkaregrwrppaehvbahf  (UNCHANGED)          │
+   │  EXISTING (39 tables) — squad_posts · events · students ·    │
+   │            parcels · shipments · pack_requests · …           │
+   │  NEW:    articles · sponsors · event_sponsors                │
+   │          admin_users · admin_invitations                     │
+   │  EXTEND: events (+slug, +rsvp_url, +draft); maybe squad_posts│
+   │          (+hidden_at, +is_featured, +hidden_by)              │
+   │  STORAGE: article-html (priv) · article-assets               │
+   │           event-covers · sponsor-logos                       │
+   └──────────────────────────────────────────────────────────────┘</div>
+
+  <h3>Key invariants</h3>
+  <ul>
+    <li><strong>Only the admin app holds the service-role key.</strong> uscbia.com remains anon + RLS for the new tables.</li>
+    <li><strong>Existing live data is preserved.</strong> Nothing migrated, nothing destroyed.</li>
+    <li><strong>The shipping admin migration is UI-only.</strong> Same Supabase, same tables, same business logic — just rebuilt with shadcn primitives + role-gated middleware in the new app.</li>
+    <li><strong>One admin URL after cutover.</strong> uscbia.com/admin gets a 301 redirect to admin.uscbia.com for the cutover window, then removed entirely.</li>
+  </ul>
+</section>
+
+<hr>
+
+<!-- AUTH -->
+<section id="auth">
+  <div class="section-head">
+    <div class="num">03</div>
+    <h2>Auth &amp; roles</h2>
+    <p class="lede">Three role tiers in <code>admin_users</code>. Replaces the existing <code>isAdmin</code> boolean (which is what uscbia.com/admin uses today via <code>useAuth</code>).</p>
+  </div>
+
+  <h3>Three Supabase clients (in <code>packages/bia-shared/supabase.ts</code>)</h3>
+  <table>
+    <tr><th>Factory</th><th>Used in</th><th>Privileges</th></tr>
+    <tr><td><code>createBrowserClient()</code></td><td>uscbia.com client components</td><td>anon · subject to RLS</td></tr>
+    <tr><td><code>createServerClient(cookies)</code></td><td>Both apps' server components &amp; route handlers</td><td>session-scoped · subject to RLS</td></tr>
+    <tr><td><code>createServiceRoleClient()</code></td><td><strong>bia-admin only</strong> · API routes after <code>requireRole()</code> passes</td><td>bypasses RLS · admin writes</td></tr>
+  </table>
+
+  <h3>Role capability matrix</h3>
+  <table>
+    <tr><th>Capability</th><th>super_admin</th><th>editor</th><th>viewer</th></tr>
+    <tr><td>Read any dashboard data</td><td>✓</td><td>✓</td><td>✓</td></tr>
+    <tr><td>Create &amp; edit drafts (blog, events, sponsors)</td><td>✓</td><td>✓</td><td>—</td></tr>
+    <tr><td>Submit blog posts for review</td><td>✓</td><td>✓</td><td>—</td></tr>
+    <tr><td><strong>Publish</strong> (in_review → published, event draft → published)</td><td>✓</td><td>—</td><td>—</td></tr>
+    <tr><td>Mutate 集运 status workflow</td><td>✓</td><td>✓</td><td>—</td></tr>
+    <tr><td>Moderate squad posts</td><td>✓</td><td>✓</td><td>—</td></tr>
+    <tr><td>Invite/remove admins, change roles</td><td>✓</td><td>—</td><td>—</td></tr>
+    <tr><td>View audit log</td><td>✓</td><td>✓</td><td>✓</td></tr>
+  </table>
+
+  <p style="font-size:13px;color:var(--ink-3)"><strong>Migration of isAdmin → roles</strong>: existing admins on uscbia.com (via <code>useAuth().isAdmin</code>) get seeded as <code>super_admin</code> in the new <code>admin_users</code> table. After cutover, uscbia.com's <code>useAuth().isAdmin</code> becomes vestigial (only AdminShell read it; AdminShell is removed).</p>
+</section>
+
+<hr>
+
+<!-- DATA -->
+<section id="data">
+  <div class="section-head">
+    <div class="num">04</div>
+    <h2>Data model</h2>
+    <p class="lede">39 tables already exist. We add 5, extend 1–2, leave the rest untouched.</p>
+  </div>
+
+  <table>
+    <tr><th>Table</th><th>Action</th><th>Notes</th></tr>
+    <tr><td><code>articles</code></td><td><span class="badge b-new">new</span></td><td>HTML store, workflow state, slug, language. The wedge.</td></tr>
+    <tr><td><code>sponsors</code></td><td><span class="badge b-new">new</span></td><td>Logo, name, website, tier, display_order, is_active</td></tr>
+    <tr><td><code>event_sponsors</code></td><td><span class="badge b-new">new</span></td><td>Many-to-many (event ↔ sponsor)</td></tr>
+    <tr><td><code>admin_users</code></td><td><span class="badge b-new">new</span></td><td>FK to <code>auth.users</code>, role enum, email mirror</td></tr>
+    <tr><td><code>admin_invitations</code></td><td><span class="badge b-new">new</span></td><td>Email, role, invited_by, accepted_at</td></tr>
+    <tr><td><code>events</code></td><td><span class="badge b-extend">extend</span></td><td>+ <code>slug</code>, + <code>rsvp_url</code>, + <code>'draft'</code> in status check</td></tr>
+    <tr><td><code>squad_posts</code></td><td><span class="badge b-extend">extend</span></td><td>+ <code>hidden_at</code>, + <code>is_featured</code>, + <code>hidden_by</code> (only if not already present — verify against live)</td></tr>
+    <tr><td><code>pack_requests</code> · <code>parcels</code> · <code>parcel_events</code> · <code>shipments</code> · <code>pack_request_parcels</code></td><td><span class="badge b-reuse">reuse</span></td><td>集运 stack — same tables, new admin UI talking to them</td></tr>
+    <tr><td><code>shipping_routes</code> · <code>shipping_contacts</code> · <code>warehouse_addresses</code> · <code>shipping_notifications</code></td><td><span class="badge b-reuse">reuse</span></td><td>集运 settings — same tables, new admin UI</td></tr>
+    <tr><td><code>students</code></td><td><span class="badge b-reuse">reuse</span></td><td>48 rows. Identity for 集运 customers. New admin reads via FK.</td></tr>
+    <tr><td><code>event_submissions</code> · <code>event_attendance</code></td><td><span class="badge b-reuse">reuse</span></td><td>Existing community-event submissions queue surfaces in BIA Events admin</td></tr>
+    <tr><td><code>squad_members</code> · <code>squad_member_counts</code></td><td><span class="badge b-reuse">reuse</span></td><td>Squad join data; admin reads</td></tr>
+    <tr><td><code>admin_audit_log</code></td><td><span class="badge b-reuse">reuse</span></td><td>Email-keyed. Every admin mutation appends here.</td></tr>
+    <tr><td><code>admin_indexes / admin_parcel_rpcs</code> (existing migrations)</td><td><span class="badge b-reuse">reuse</span></td><td>Existing performance indexes + RPC helpers from PR #32. Stay in place.</td></tr>
+    <tr><td><code>roommate_profiles</code></td><td><span class="badge b-keep">keep</span></td><td>Untouched</td></tr>
+    <tr><td>~24 others (courses, sublets, messages, instagram_accounts, george_jobs, …)</td><td><span class="badge b-keep">keep</span></td><td>Out of scope</td></tr>
+  </table>
+
+  <h3><code>articles</code> table (the only complex new table)</h3>
+  <pre><code>create table articles (
+  id              uuid primary key default gen_random_uuid(),
+  slug            text not null unique,                <span class="c-comment">-- /blog/[slug] on uscbia.com</span>
+  title           text not null,
+  language        text not null check (language in (<span class="c-str">'cn'</span>,<span class="c-str">'en'</span>)),
+  cover_image_url text,
+  tags            text[] default <span class="c-str">'{}'</span>,
+  author_id       uuid not null references admin_users(id),
+
+  html_raw_path   text not null,                       <span class="c-comment">-- private storage</span>
+  html_clean      text not null,                       <span class="c-comment">-- sanitized HTML rendered to readers</span>
+  asset_paths     text[] default <span class="c-str">'{}'</span>,
+  word_count      int,
+
+  status          text not null default <span class="c-str">'draft'</span>
+                  check (status in (<span class="c-str">'draft'</span>,<span class="c-str">'in_review'</span>,<span class="c-str">'published'</span>,<span class="c-str">'unpublished'</span>)),
+  submitted_at    timestamptz,  submitted_by   uuid references admin_users(id),
+  published_at    timestamptz,  published_by   uuid references admin_users(id),
+  unpublished_at  timestamptz,  unpublished_by uuid references admin_users(id),
+
+  created_at      timestamptz default now(),
+  updated_at      timestamptz default now()
+);
+
+create index articles_status_lang_idx on articles (status, language, published_at desc);
+create unique index articles_slug_pub_idx on articles (slug) where status = <span class="c-str">'published'</span>;</code></pre>
+</section>
+
+<hr>
+
+<!-- BLOG -->
+<section id="blog">
+  <div class="section-head">
+    <div class="num">05</div>
+    <h2>Blog flow — the wedge</h2>
+    <p class="lede">Drop any HTML in the admin, get a published blog post on uscbia.com. The most engineering-heavy piece in this spec.</p>
+  </div>
+
+  <h3>Naming</h3>
+  <ul>
+    <li><strong>DB table:</strong> <code>articles</code> (clean, generic)</li>
+    <li><strong>Admin path:</strong> <code>/admin/blog</code>, <code>/admin/blog/new</code>, <code>/admin/blog/[id]</code></li>
+    <li><strong>Public path:</strong> <code>/blog</code>, <code>/blog/[slug]</code> on uscbia.com</li>
+    <li><strong>UI label:</strong> "Blog" everywhere visitors and editors see it</li>
+    <li><strong>Landing-page section:</strong> "Latest Dispatches" / "最新动态" stays as the section heading; the three placeholder cards get replaced by real top-3 published posts</li>
+  </ul>
+
+  <h3>The normalize pipeline (<code>packages/bia-shared/html-sanitize.ts</code>)</h3>
+  <p>One function, idempotent, server-side. Transactional with the article insert.</p>
+  <div class="diagram">┌──────────────┐  upload input
+│ upload input │  .html · .zip · pasted clipboard text
+└──────┬───────┘
+       ▼
+┌──────────────┐  unzip if needed → temp workspace
+│ 01 unzip     │
+└──────┬───────┘
+       ▼
+┌──────────────┐  parse5 → DOM tree, no browser
+│ 02 parse     │
+└──────┬───────┘
+       ▼
+┌──────────────┐  drop &lt;o:p&gt;, &lt;style&gt;, MS Word junk, deprecated tags
+│ 03 strip     │
+└──────┬───────┘
+       ▼
+┌──────────────┐  whitelist tags (h1-h4, p, ul/ol/li, blockquote, pre, code,
+│ 04 whitelist │   a, em/strong, img, figure, table…); unwrap others
+└──────┬───────┘
+       ▼
+┌──────────────┐  whitelist attrs (href, src, alt, title, colspan, rowspan)
+│ 05 attrs     │   strip all style, class, id, on*
+└──────┬───────┘
+       ▼
+┌──────────────┐  base64 → upload, rewrite src
+│ 06 images    │  ./local.png (zip) → match sibling → upload, rewrite
+└──────┬───────┘  https://… → leave (v1.5 rehost flag)
+       ▼
+┌──────────────┐  DOMPurify defense-in-depth pass
+│ 07 sanitize  │
+└──────┬───────┘
+       ▼
+┌──────────────┐  title from first &lt;h1&gt; · cover from first &lt;img&gt;
+│ 08 metadata  │  word_count from text
+└──────┬───────┘
+       ▼
+┌──────────────┐  slug from title · pinyin transliterate for CN
+│ 09 slug      │  -2, -3 suffix on collision
+└──────┬───────┘
+       ▼
+┌──────────────┐  { html_clean, title, cover_image_url, asset_paths, word_count }
+│ 10 output    │
+└──────────────┘</div>
+
+  <h3>Workflow state machine</h3>
+  <div class="state-machine">
+    <span class="state-node start">draft</span>
+    <span class="state-arrow">→<span class="label">submit</span></span>
+    <span class="state-node">in_review</span>
+    <span class="state-arrow">→<span class="label">publish · super_admin only</span></span>
+    <span class="state-node terminal">published</span>
+    <span class="state-arrow">→<span class="label">unpublish</span></span>
+    <span class="state-node">unpublished</span>
+    <span class="state-arrow">↺<span class="label">republish</span></span>
+  </div>
+
+  <h3>Editor surface — split view</h3>
+  <ul>
+    <li><strong>Left:</strong> drop zone, title, slug, language, tags, cover, status pill, action buttons.</li>
+    <li><strong>Right:</strong> live preview via the shared <code>&lt;ArticleRenderer&gt;</code>. State-only, no server roundtrip per keystroke.</li>
+    <li><strong>Below 1024px:</strong> single-pane with Source/Preview toggle.</li>
+  </ul>
+
+  <h3>Public reader (lives in uscbia.com)</h3>
+  <p style="font-size:14px"><code>app/blog/page.tsx</code> — list of published posts, filter by language &amp; tag.<br>
+  <code>app/blog/[slug]/page.tsx</code> — server component, renders <code>html_clean</code> via the shared <code>&lt;ArticleRenderer&gt;</code>, OG meta from title + cover. 404 if no published row matches.</p>
+
+  <h3>Landing-page integration (uscbia.com <code>app/page.tsx</code>)</h3>
+  <pre><code><span class="c-comment">// Replace the hardcoded blog.posts loop in the landing page Blog section.
+// Server component fetch (or revalidate=60s SWR if kept client component):</span>
+
+const { data: latestPosts } = await supabase
+  .from(<span class="c-str">'articles'</span>)
+  .select(<span class="c-str">'slug, title, cover_image_url, language, published_at'</span>)
+  .eq(<span class="c-str">'status'</span>, <span class="c-str">'published'</span>)
+  .order(<span class="c-str">'published_at'</span>, { ascending: false })
+  .limit(3);
+
+<span class="c-comment">// Map into the existing tilted-card UI (preserve the rotation/offset
+// design so the visual rhythm of the section stays the same).
+// Drop blog.posts[] from lib/i18n.ts; keep blog.heading + blog.byline.</span></code></pre>
+</section>
+
+<hr>
+
+<!-- EVENTS -->
+<section id="events">
+  <div class="section-head">
+    <div class="num">06</div>
+    <h2>BIA Events admin</h2>
+    <p class="lede">Officer-curated marketing events. Reuses live <code>events</code> table.</p>
+  </div>
+
+  <h3>Schema delta</h3>
+  <pre><code>alter table events add column slug text unique;
+alter table events add column rsvp_url text;
+alter table events drop constraint events_status_check;
+alter table events add constraint events_status_check
+  check (status in (<span class="c-str">'draft'</span>,<span class="c-str">'published'</span>,<span class="c-str">'active'</span>,<span class="c-str">'cancelled'</span>,<span class="c-str">'past'</span>));</code></pre>
+
+  <h3>Admin pages</h3>
+  <table>
+    <tr><th>Path</th><th>Job</th></tr>
+    <tr><td><code>/admin/events</code></td><td>Sortable filterable table — title, date, location, source badge, status, sponsor count.</td></tr>
+    <tr><td><code>/admin/events/new</code></td><td>Form: title, slug, date, end_date, location, description, cover, category, RSVP URL, is_featured, sponsor multi-select.</td></tr>
+    <tr><td><code>/admin/events/[id]</code></td><td>Edit. Sidebar: audit log, attached sponsors. "Cancel event" button.</td></tr>
+    <tr><td><code>/admin/events/submissions</code></td><td>Queue of <code>event_submissions where status='pending'</code>.</td></tr>
+  </table>
+
+  <h3>uscbia.com surfaces</h3>
+  <ul>
+    <li><strong>Landing page hero</strong>: "Upcoming BIA Events" section above roommate grid — next 3–5 events from <code>source='bia'</code>.</li>
+    <li><strong><code>/events</code></strong>: full list page with all <code>source='bia'</code> events, filter by category.</li>
+  </ul>
+</section>
+
+<hr>
+
+<!-- SPONSORS -->
+<section id="sponsors">
+  <div class="section-head">
+    <div class="num">07</div>
+    <h2>Sponsors</h2>
+    <p class="lede">Two new tables. CRUD + event attachment. Logos surface only on attached events.</p>
+  </div>
+  <pre><code>create table sponsors (
+  id            uuid primary key default gen_random_uuid(),
+  name          text not null,
+  logo_url      text not null,
+  website_url   text,
+  tier          text not null check (tier in (<span class="c-str">'event'</span>,<span class="c-str">'recruiting'</span>,<span class="c-str">'local'</span>,<span class="c-str">'payment'</span>)),
+  display_order int default 0,
+  is_active     boolean default true,
+  created_at    timestamptz default now(),
+  updated_at    timestamptz default now()
+);
+
+create table event_sponsors (
+  event_id   uuid references events(id) on delete cascade,
+  sponsor_id uuid references sponsors(id) on delete cascade,
+  primary key (event_id, sponsor_id)
+);</code></pre>
+  <ul>
+    <li><code>/admin/sponsors</code> — table grouped by tier; drag-to-reorder updates <code>display_order</code>.</li>
+    <li><code>/admin/sponsors/[id]</code> — form + sidebar showing attached events.</li>
+    <li>Storage: public bucket <code>sponsor-logos/{sponsor_id}/{filename}</code>.</li>
+    <li>uscbia.com event cards render attached sponsor logos.</li>
+  </ul>
+</section>
+
+<hr>
+
+<!-- SQUAD MOD -->
+<section id="squad">
+  <div class="section-head">
+    <div class="num">08</div>
+    <h2>Squad moderation</h2>
+    <p class="lede">Squad / 找搭子 is already a live user feature. Admin gets a moderation page only.</p>
+  </div>
+
+  <table>
+    <tr><th>Path</th><th>Job</th></tr>
+    <tr><td><code>/admin/squad</code></td><td>List of all squad posts. Filter: category, gender, status (active/hidden). Actions: <strong>Hide</strong> (soft-delete), <strong>Feature</strong>, <strong>Delete</strong>. Click → post detail with full content + member list.</td></tr>
+  </table>
+
+  <h3>Schema delta (only if missing)</h3>
+  <pre><code>alter table squad_posts add column if not exists hidden_at timestamptz;
+alter table squad_posts add column if not exists is_featured boolean default false;
+alter table squad_posts add column if not exists hidden_by uuid references admin_users(id);
+
+create index if not exists squad_posts_visibility_idx
+  on squad_posts (hidden_at, is_featured desc, created_at desc);</code></pre>
+
+  <h3>uscbia.com change</h3>
+  <p style="font-size:14px"><code>app/squad/page.tsx</code> filter — exclude <code>hidden_at is not null</code>; pin <code>is_featured = true</code> to top. One-line query change.</p>
+</section>
+
+<hr>
+
+<!-- SHIPPING -->
+<section id="shipping">
+  <div class="section-head">
+    <div class="num">09</div>
+    <h2>集运 admin migration</h2>
+    <p class="lede">Move the existing <code>uscbia.com/admin/shipping/*</code> code into bia-admin. Same Supabase, same tables, same business logic — new chrome (shadcn) and new auth (roles).</p>
+  </div>
+
+  <div class="risk">
+    <h4>⚠ Active production migration</h4>
+    <p>Live data: <strong>1 parcel, 1 shipment, 1 pack_request</strong> are currently in active operations. Officers use the existing <code>uscbia.com/admin/shipping</code> today. Migration must preserve continuity. <strong>Cutover is the riskiest moment</strong> — see §13 deploy plan.</p>
+  </div>
+
+  <h3>What gets ported (from uscbia.com main)</h3>
+  <table>
+    <tr><th>Existing path (uscbia.com)</th><th>New path (bia-admin)</th><th>Effort</th></tr>
+    <tr><td><code>app/admin/shipping/contacts/page.tsx</code></td><td><code>app/(admin)/shipping/contacts/page.tsx</code></td><td>L</td></tr>
+    <tr><td><code>app/admin/shipping/pack-requests/page.tsx</code></td><td><code>app/(admin)/shipping/pack-requests/page.tsx</code></td><td>L</td></tr>
+    <tr><td><code>app/admin/shipping/parcels/page.tsx</code> + <code>[id]/page.tsx</code></td><td><code>app/(admin)/shipping/parcels/page.tsx</code> + <code>[id]/page.tsx</code></td><td>M</td></tr>
+    <tr><td><code>app/admin/shipping/requests/page.tsx</code></td><td><code>app/(admin)/shipping/requests/page.tsx</code></td><td>S</td></tr>
+    <tr><td><code>app/admin/shipping/routes/page.tsx</code></td><td><code>app/(admin)/shipping/routes/page.tsx</code></td><td>L</td></tr>
+    <tr><td><code>app/admin/shipping/shipments/page.tsx</code> + <code>[id]/page.tsx</code></td><td><code>app/(admin)/shipping/shipments/page.tsx</code> + <code>[id]/page.tsx</code></td><td>L</td></tr>
+    <tr><td><code>app/admin/users/{,/[id]}/page.tsx</code></td><td><code>app/(admin)/members/page.tsx</code> (renamed)</td><td>M (also adds invite + role mgmt)</td></tr>
+    <tr><td><code>components/admin/AdminShell.tsx</code></td><td>Replaced by new shadcn-based shell — not literally ported</td><td>—</td></tr>
+    <tr><td><code>components/admin/Field.tsx</code></td><td>Replaced by shadcn form primitives</td><td>—</td></tr>
+    <tr><td><code>app/api/admin/shipping/*</code></td><td><code>app/api/admin/shipping/*</code> in bia-admin</td><td>M (logic copy + role gate swap)</td></tr>
+    <tr><td><code>supabase/migrations/20260422_admin_indexes.sql</code></td><td>Stay in uscbia.com migrations folder; no re-run</td><td>—</td></tr>
+    <tr><td><code>supabase/migrations/20260423_admin_parcel_rpcs.sql</code></td><td>Stay in uscbia.com migrations folder; no re-run</td><td>—</td></tr>
+  </table>
+
+  <p style="font-size:13px;color:var(--ink-3)"><strong>Logic stays identical.</strong> All these pages query the same Supabase tables (parcels, shipments, etc.) — only the UI primitives and auth gate change. Risk is in the visual + interaction parity, not the data semantics.</p>
+
+  <h3>What changes in the new home</h3>
+  <ul>
+    <li><strong>Auth:</strong> existing <code>useAuth().isAdmin</code> hook (uscbia.com) → middleware-gated route group with <code>requireRole()</code> (bia-admin).</li>
+    <li><strong>Shell:</strong> existing <code>AdminShell</code> using uscbia.com cream/serif palette → new shadcn shell using zinc/slate + BIA red accent.</li>
+    <li><strong>Forms:</strong> existing <code>&lt;Field&gt;</code> custom inputs → React Hook Form + Zod + shadcn primitives.</li>
+    <li><strong>Tables:</strong> existing custom tables → TanStack Table.</li>
+    <li><strong>Toasts:</strong> existing toast pattern → Sonner.</li>
+  </ul>
+</section>
+
+<hr>
+
+<!-- PUBLIC -->
+<section id="public">
+  <div class="section-head">
+    <div class="num">10</div>
+    <h2>Public surfaces (uscbia.com repo)</h2>
+    <p class="lede">All public additions ship into <code>/Users/mac/Documents/bia-roommate/</code>.</p>
+  </div>
+  <table>
+    <tr><th>Surface</th><th>Action</th><th>Reads</th></tr>
+    <tr><td><code>/blog</code></td><td>NEW</td><td><code>articles where status='published'</code> ordered <code>published_at desc</code></td></tr>
+    <tr><td><code>/blog/[slug]</code></td><td>NEW</td><td><code>articles where slug=$1 and status='published'</code></td></tr>
+    <tr><td><code>/events</code></td><td>NEW (light)</td><td><code>events where source='bia' and status in ('published','active')</code></td></tr>
+    <tr><td><code>/</code> landing — Blog section</td><td>MODIFY</td><td>Replace placeholder cards with top-3 latest published articles. Drop <code>blog.posts[]</code> from i18n; keep <code>blog.heading</code>/<code>blog.byline</code>.</td></tr>
+    <tr><td><code>/</code> landing — Events hero</td><td>MODIFY</td><td>Add upcoming-events section reading next 3–5 events</td></tr>
+    <tr><td><code>EventCard</code> component</td><td>MODIFY</td><td>Render attached sponsor logos along bottom</td></tr>
+    <tr><td><code>/squad</code></td><td>MODIFY (1-line)</td><td>Filter out <code>hidden_at is not null</code>; featured pinned to top</td></tr>
+    <tr><td><code>/admin/*</code></td><td><span class="badge b-migrate">remove after cutover</span></td><td>301 redirect to admin.uscbia.com during cutover; delete after stable</td></tr>
+  </table>
+
+  <p style="font-size:13px;color:var(--ink-3);margin-top:12px"><strong>No changes</strong> to existing routes: roommate flows, course-rating, hackathon, sublet, account, auth, onboarding, usc-group, /集运 (lives in uscbia.com per shipping admin work).</p>
+</section>
+
+<hr>
+
+<!-- UX -->
+<section id="ux">
+  <div class="section-head">
+    <div class="num">11</div>
+    <h2>Dashboard layout &amp; UX</h2>
+    <p class="lede">Three locked decisions. Sidebar back to 6 items.</p>
+  </div>
+
+  <h3>Shell — left sidebar with grouped sections</h3>
+  <div class="mockup-wrap">
+    <div class="mockup mk-shell">
+      <div class="mk-side">
+        <div class="brand">BIA Admin</div>
+        <div class="grp">Content</div>
+        <div class="nav active"><span class="ic">📰</span> Blog</div>
+        <div class="nav"><span class="ic">🗓</span> Events</div>
+        <div class="nav"><span class="ic">⭐</span> Sponsors</div>
+        <div class="grp">Community</div>
+        <div class="nav"><span class="ic">👯</span> Squad mod</div>
+        <div class="grp">Operations</div>
+        <div class="nav"><span class="ic">📦</span> 集运</div>
+        <div class="grp">People</div>
+        <div class="nav"><span class="ic">👥</span> Members</div>
+      </div>
+      <div class="mk-main">
+        <div class="mk-top">
+          <div class="crumbs">Blog &nbsp;›&nbsp; <strong>All posts</strong></div>
+          <div class="user">bobby@bia.usc.edu · super_admin</div>
+        </div>
+        <div class="mk-body">
+          <div class="mk-row"><span>Welcome Week 2026: A Survival Guide</span><span class="pill pill-green">published</span></div>
+          <div class="mk-row"><span>USC Housing Guide</span><span class="pill pill-amber">in_review</span></div>
+          <div class="mk-row"><span>YC China Talk Recap</span><span class="pill pill-green">published</span></div>
+          <div class="mk-row"><span>Roommate Tips for Freshmen</span><span class="pill pill-gray">draft</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Dashboard home — "what needs you today"</h3>
+  <div class="mockup-wrap">
+    <div class="mockup" style="padding:16px">
+      <div style="font-weight:700;font-size:15px;margin-bottom:10px">Welcome back, Bobby</div>
+      <div class="dh-attn">
+        <div class="ac"><div class="h"><span>📰 Blog</span><span class="n">3</span></div><div class="sub">in review · waiting on super_admin</div></div>
+        <div class="ac"><div class="h"><span>🗓 BIA Events</span><span class="n">2</span></div><div class="sub">community submissions pending</div></div>
+        <div class="ac"><div class="h"><span>👯 Squad mod</span><span class="n">5</span></div><div class="sub">posts flagged for review</div></div>
+        <div class="ac"><div class="h"><span>📦 集运 requests</span><span class="n">5</span></div><div class="sub">pending contact</div></div>
+      </div>
+      <div style="background:#fafafa;border:1px solid var(--line);border-radius:4px;padding:10px;margin-top:8px">
+        <div style="font-weight:600;font-size:12px;margin-bottom:6px">Quick actions</div>
+        <div style="display:flex;gap:6px">
+          <span class="btn btn-primary">+ New blog post</span>
+          <span class="btn btn-ghost">+ Event</span>
+          <span class="btn btn-ghost">+ Sponsor</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Blog editor — split view</h3>
+  <div class="mockup-wrap">
+    <div class="mockup split-edit">
+      <div class="sl">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">Source &amp; metadata</div>
+        <div class="drop-zone filled"><strong>welcome-week-2026.html ✓</strong>uploaded · 3 images extracted</div>
+        <div class="input-row"><div><div class="input-label">Title</div><div class="input-pill">Welcome Week 2026: A Survival Guide</div></div></div>
+        <div class="input-row">
+          <div><div class="input-label">Slug</div><div class="input-pill">welcome-week-2026</div></div>
+          <div><div class="input-label">Lang</div><div class="input-pill">CN</div></div>
+        </div>
+        <div class="input-row"><div><div class="input-label">Tags</div><div class="input-pill">orientation, freshman</div></div></div>
+        <div class="input-row"><div><div class="input-label">Cover</div><div class="input-pill">img-1.png ✓</div></div></div>
+        <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:12px">
+          <span class="btn btn-ghost">Save draft</span>
+          <span class="btn btn-primary">Submit for review</span>
+        </div>
+      </div>
+      <div class="sr">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">Live preview</div>
+        <div class="preview-render">
+          <h6>Welcome Week 2026: A Survival Guide</h6>
+          <p>新生入学第一周往往是兵荒马乱的。这篇文章帮你理出几条最关键的事，让你少走一些弯路…</p>
+          <div class="img-ph">[ image: img-1.png ]</div>
+          <p>第一件事：拿到 USC ID。新生中心在 University Park 的 STU 大楼一楼…</p>
+          <p>第二件事：开通 NetID 双重认证…</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr>
+
+<!-- AESTHETIC -->
+<section id="aesthetic">
+  <div class="section-head">
+    <div class="num">12</div>
+    <h2>Aesthetic system</h2>
+    <p class="lede">Neutral SaaS palette, BIA red accent, shadcn primitives.</p>
+  </div>
+
+  <div class="swatches">
+    <div class="swatch"><div class="chip" style="background:#0a0a0b"></div><div class="meta"><div class="name">Ink</div><div class="hex">#0A0A0B</div></div></div>
+    <div class="swatch"><div class="chip" style="background:#27272a"></div><div class="meta"><div class="name">Slate-900</div><div class="hex">#27272A</div></div></div>
+    <div class="swatch"><div class="chip" style="background:#71717a"></div><div class="meta"><div class="name">Zinc-500</div><div class="hex">#71717A</div></div></div>
+    <div class="swatch"><div class="chip" style="background:#e4e4e7"></div><div class="meta"><div class="name">Line</div><div class="hex">#E4E4E7</div></div></div>
+    <div class="swatch"><div class="chip" style="background:#fafafa"></div><div class="meta"><div class="name">Surface alt</div><div class="hex">#FAFAFA</div></div></div>
+    <div class="swatch"><div class="chip" style="background:#990000"></div><div class="meta"><div class="name">BIA red · accent</div><div class="hex">#990000</div></div></div>
+  </div>
+
+  <p style="font-size:13px;color:var(--ink-3)"><strong>Type</strong>: Inter primary, ui-monospace for code. <strong>Density</strong>: dense by default, 8–12px cell padding. <strong>Status pills</strong>: green published · amber in_review · gray draft · red cancelled/hidden · blue new. <strong>Stack</strong>: shadcn/ui + TanStack Table + TanStack Query + React Hook Form + Zod + Sonner + Lucide.</p>
+</section>
+
+<hr>
+
+<!-- ERRORS -->
+<section id="errors">
+  <div class="section-head">
+    <div class="num">13</div>
+    <h2>Errors &amp; testing</h2>
+    <p class="lede">Match the bar PR #32 set: vitest unit tests + manual smoke checklist. Migration adds parity tests.</p>
+  </div>
+  <table>
+    <tr><th>Surface</th><th>Failure</th><th>Behavior</th></tr>
+    <tr><td>HTML normalize</td><td>Malformed input</td><td>API 400 + <code>{stage, message, offendingNode}</code>; nothing persisted</td></tr>
+    <tr><td>HTML normalize</td><td>Storage upload mid-pipeline</td><td>API 500 + best-effort cleanup; transactional</td></tr>
+    <tr><td>Auth</td><td>Session expired</td><td>Middleware → <code>/login?return_to=…</code></td></tr>
+    <tr><td>Auth</td><td>Signed in but not in admin_users</td><td>Middleware → <code>/login?denied=not-invited</code></td></tr>
+    <tr><td>uscbia.com /blog/[slug]</td><td>Slug not published</td><td>404 (RLS makes invisible)</td></tr>
+    <tr><td>uscbia.com landing Blog</td><td>Fewer than 3 published posts</td><td>Render however many exist; hide section if 0</td></tr>
+    <tr><td>Squad mod</td><td>Hide non-existent post</td><td>API 404; toast in admin UI</td></tr>
+    <tr><td>集运 migration</td><td>Old uscbia.com /admin link visited post-cutover</td><td>301 redirect to admin.uscbia.com same path</td></tr>
+    <tr><td>Concurrent admin edit</td><td>Two editors save same row</td><td>Last write wins; audit log preserves both</td></tr>
+  </table>
+
+  <h3>Migration parity tests</h3>
+  <p style="font-size:14px">Before cutover, every shipping admin page in bia-admin must pass a manual checklist mirroring its uscbia.com equivalent: same data, same actions, same field validation. <code>docs/SMOKE-shipping-parity.md</code> tracks the per-page checklist.</p>
+</section>
+
+<hr>
+
+<!-- DEPLOY -->
+<section id="deploy">
+  <div class="section-head">
+    <div class="num">14</div>
+    <h2>Migrations, deployment, cutover</h2>
+    <p class="lede">Two-repo coordination. Cutover plan for shipping admin.</p>
+  </div>
+
+  <h3>Migrations (this repo)</h3>
+  <pre><code>BIA 新生service/supabase/migrations/
+├── 00000000000000_baseline.sql                      <span class="c-comment">// snapshot of live schema</span>
+├── 20260508000001_extend_events_for_admin.sql
+├── 20260508000002_create_articles.sql
+├── 20260508000003_create_sponsors_and_event_sponsors.sql
+├── 20260508000004_create_admin_users_and_invitations.sql
+├── 20260508000005_squad_moderation_columns.sql
+├── 20260508000006_create_storage_buckets.sql
+└── 20260508000007_rls_policies.sql</code></pre>
+
+  <h3>Deploy plan (sequenced)</h3>
+  <ol>
+    <li><strong>Phase 1 — Foundation.</strong> Apply migrations to live Supabase. Build bia-admin shell (auth, middleware, AdminShell, login, members). Seed your <code>super_admin</code> row. Deploy at <code>bia-admin.vercel.app</code>.</li>
+    <li><strong>Phase 2 — New domains.</strong> Build Blog, Events, Sponsors, Squad-mod inside bia-admin. Ship uscbia.com PR adding <code>/blog</code> + <code>/blog/[slug]</code> + landing-page Blog/Events surface + sponsor-logo render + squad <code>hidden_at</code> filter. <strong>Both apps run in parallel</strong>: officers use uscbia.com/admin/shipping for ops, bia-admin for content.</li>
+    <li><strong>Phase 3 — Shipping migration.</strong> Port shipping pages into bia-admin one section at a time (routes → contacts → warehouses → parcels → shipments → pack-requests → requests). Each section: ship → smoke parity test → mark "✓ ready for cutover" in <code>SMOKE-shipping-parity.md</code>.</li>
+    <li><strong>Phase 4 — Cutover.</strong> When all shipping sections pass parity, deploy uscbia.com PR that (a) removes <code>app/admin/*</code>, (b) adds 301 redirects from <code>/admin/*</code> to <code>https://admin.uscbia.com/*</code>, (c) removes <code>components/admin/*</code>. Officers receive a one-line WeChat: "BIA admin moved to admin.uscbia.com". Monitor <code>admin_audit_log</code> for ops continuity over 48h.</li>
+    <li><strong>Phase 5 — DNS.</strong> Point <code>admin.uscbia.com</code> at the Vercel project. Drop the redirect from uscbia.com once analytics show 0 traffic to old paths.</li>
+  </ol>
+
+  <h3>Vercel projects</h3>
+  <table>
+    <tr><th>App</th><th>Project</th><th>Repo + root</th><th>Env vars</th></tr>
+    <tr><td>uscbia.com</td><td>existing</td><td>uscbia.com repo</td><td>existing — anon only</td></tr>
+    <tr><td>bia-admin</td><td><strong>NEW</strong></td><td>this repo, root <code>bia-admin/</code></td><td>+ <code>SUPABASE_SERVICE_ROLE_KEY</code> · <code>SUPABASE_JWT_SECRET</code> · Google OAuth client ID/secret</td></tr>
+  </table>
+
+  <h3>Workspace</h3>
+  <pre><code><span class="c-comment"># pnpm-workspace.yaml at repo root</span>
+packages:
+  - bia-admin
+  - packages/*</code></pre>
+
+  <h3>Seed</h3>
+  <pre><code>insert into admin_users (id, email, role)
+select id, email, <span class="c-str">'super_admin'</span>
+  from auth.users where email = <span class="c-str">'yangb7777@gmail.com'</span>
+on conflict (id) do nothing;
+<span class="c-comment">-- seed any existing isAdmin officers from uscbia.com here too</span></code></pre>
+</section>
+
+<hr>
+
+<!-- RISKS -->
+<section id="risks">
+  <div class="section-head">
+    <div class="num">15</div>
+    <h2>Risks &amp; mitigations</h2>
+    <p class="lede">As strategic CTO, the risks I'm watching.</p>
+  </div>
+
+  <div class="risk">
+    <h4>Risk 1 — Shipping ops disruption during migration</h4>
+    <p>Officers use <code>uscbia.com/admin/shipping</code> daily. A bad cutover = broken ops, frustrated officers, lost packages. <strong>Mitigation</strong>: phased per-section rollout, parity smoke checklist, both apps run in parallel through Phases 2–3, 301 redirects during Phase 4 so muscle memory still works.</p>
+  </div>
+  <div class="risk">
+    <h4>Risk 2 — Auth model drift (isAdmin → roles)</h4>
+    <p>uscbia.com's admin uses <code>useAuth().isAdmin</code> from a single boolean. New admin uses 3-tier roles. Officers seeded as <code>super_admin</code> get the same access; <strong>but</strong> if anyone needs <code>editor</code>-only access mid-migration, that user can't log into the old admin (still requires isAdmin). <strong>Mitigation</strong>: migrate everyone as <code>super_admin</code> first; demote to editor/viewer only after Phase 5 (full cutover).</p>
+  </div>
+  <div class="risk">
+    <h4>Risk 3 — Two admin URLs during Phases 2–3</h4>
+    <p>For weeks, officers see <em>two</em> admin URLs. Confusion is real. <strong>Mitigation</strong>: clear in-app banners on both: bia-admin shows "Shipping is over at uscbia.com/admin until [date]"; uscbia.com/admin shows "Content (blog/events/sponsors) is at admin.uscbia.com". Drop both banners at Phase 4.</p>
+  </div>
+  <div class="risk">
+    <h4>Risk 4 — Spec scope creep</h4>
+    <p>This is rev 3. Rev 1 covered articles + auth + roles. Rev 2 added cross-repo split. Rev 3 added 集运 migration. The spec is now ambitious enough that implementation likely needs <strong>multiple subordinate plans</strong> (one per phase). <strong>Mitigation</strong>: when we transition to <code>writing-plans</code>, recommend producing a per-phase plan file rather than one giant plan.</p>
+  </div>
+</section>
+
+<hr>
+
+<!-- NOT IN V1 -->
+<section id="out">
+  <div class="section-head">
+    <div class="num">16</div>
+    <h2>Not in v1</h2>
+    <p class="lede">Deliberately deferred.</p>
+  </div>
+  <div class="grid grid-2">
+    <div class="card"><div class="label">Blog</div><div class="value">Revisions / edit history · Scheduled publish · Multilingual pairing · Comments · Auto cover from text · Rehost of external images · TOC / related</div></div>
+    <div class="card"><div class="label">Events</div><div class="value">Luma RSVP sync · Event detail page · Photo gallery + recap · Attendance tracking</div></div>
+    <div class="card"><div class="label">Sponsors</div><div class="value">Public sponsors wall · Deal-status pipeline · Contact CRM · Deliverables checklist</div></div>
+    <div class="card"><div class="label">Squad</div><div class="value">Bulk moderation · Spam-detection ML · User-reporting flow</div></div>
+    <div class="card"><div class="label">集运</div><div class="value">Carrier API integration · Stripe/Alipay payments · Student login</div></div>
+    <div class="card"><div class="label">Admin</div><div class="value">E2E browser tests · Optimistic locking · Activity feed widget · Analytics dashboard</div></div>
+  </div>
+</section>
+
+</div><!-- /wrap -->
+
+<footer>
+  <div class="wrap">
+    <p><strong>BIA@USC · Internal Admin &amp; CMS · Design rev 3 · 2026-05-08</strong></p>
+    <p>Companion to <code>docs/superpowers/specs/2026-05-08-bia-admin-cms-design.md</code> (the markdown spec gets committed once you sign off on this rev). After approval, transition to <code>superpowers:writing-plans</code> — likely producing one plan per phase.</p>
+  </div>
+</footer>
+
+</body>
+</html>

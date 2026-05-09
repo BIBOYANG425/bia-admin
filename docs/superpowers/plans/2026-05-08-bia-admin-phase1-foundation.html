@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BIA Admin · Phase 1 Foundation Plan (rev 2)</title>
+<style>
+  :root {
+    --ink: #0a0a0b; --ink-2: #27272a; --ink-3: #52525b; --ink-4: #71717a;
+    --line: #e4e4e7; --line-soft: #f4f4f5;
+    --bg: #ffffff; --bg-alt: #fafafa; --bg-deep: #18181b;
+    --accent: #990000; --accent-soft: #fef2f2;
+    --green: #166534; --green-bg: #dcfce7;
+    --amber: #92400e; --amber-bg: #fef3c7;
+    --gray: #52525b;  --gray-bg: #f4f4f5;
+    --blue: #1d4ed8;  --blue-bg: #dbeafe;
+    --purple: #6d28d9; --purple-bg: #ede9fe;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, "Inter", system-ui, sans-serif;
+    color: var(--ink); background: var(--bg); font-size: 15px; line-height: 1.55;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 32px; }
+
+  .hero {
+    background: var(--bg-deep); color: #fff;
+    padding: 56px 0 48px; margin-bottom: 48px;
+    position: relative; overflow: hidden;
+  }
+  .hero::after {
+    content: ""; position: absolute; right: -120px; top: -80px;
+    width: 360px; height: 360px; background: var(--accent);
+    border-radius: 100%; opacity: 0.08; filter: blur(40px);
+  }
+  .hero-tag {
+    display: inline-block; font-size: 11px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: #d4d4d8; margin-bottom: 14px;
+    border-left: 3px solid var(--accent); padding-left: 10px;
+  }
+  .hero-tag .rev { color: var(--accent); font-weight: 700; }
+  .hero h1 {
+    font-size: 44px; line-height: 1.05; margin: 0 0 12px;
+    font-weight: 700; letter-spacing: -0.02em;
+  }
+  .hero .sub { font-size: 17px; color: #a1a1aa; margin: 0 0 28px; max-width: 780px; }
+  .hero .meta { display: flex; gap: 32px; flex-wrap: wrap; font-size: 13px; color: #d4d4d8; }
+  .hero .meta strong { color: #71717a; font-weight: 600; display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 2px; }
+
+  section { margin-bottom: 56px; }
+  .section-head { margin-bottom: 24px; }
+  .section-head .num { font-size: 11px; font-weight: 600; color: var(--accent); letter-spacing: 0.15em; text-transform: uppercase; }
+  .section-head h2 { font-size: 28px; margin: 4px 0 6px; font-weight: 700; letter-spacing: -0.01em; }
+  .section-head .lede { color: var(--ink-3); font-size: 15px; margin: 0; max-width: 720px; }
+
+  h3 { font-size: 18px; font-weight: 600; margin: 28px 0 10px; letter-spacing: -0.005em; }
+  p { margin: 0 0 12px; }
+  ul, ol { padding-left: 22px; margin: 0 0 12px; }
+  li { margin-bottom: 4px; }
+  hr { border: none; border-top: 1px solid var(--line); margin: 56px 0; }
+
+  code { background: var(--gray-bg); padding: 1px 6px; border-radius: 3px; font-size: 0.88em; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  pre {
+    background: var(--bg-deep); color: #e4e4e7; padding: 16px 20px;
+    border-radius: 6px; font-size: 12.5px; line-height: 1.55;
+    overflow-x: auto; margin: 12px 0; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  pre code { background: none; padding: 0; color: inherit; }
+  .c-comment { color: #71717a; }
+  .c-key { color: #fbbf24; }
+  .c-str { color: #86efac; }
+
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 500; line-height: 1.5; }
+  .pill-red { background: var(--accent-soft); color: var(--accent); }
+  .pill-green { background: var(--green-bg); color: var(--green); }
+  .pill-amber { background: var(--amber-bg); color: var(--amber); }
+  .pill-gray { background: var(--gray-bg); color: var(--gray); }
+  .pill-blue { background: var(--blue-bg); color: var(--blue); }
+  .pill-purple { background: var(--purple-bg); color: var(--purple); }
+
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13.5px; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; color: var(--ink-2); background: var(--bg-alt); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  td code { font-size: 12px; }
+
+  .grid { display: grid; gap: 12px; }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid-4 { grid-template-columns: repeat(4, 1fr); }
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 800px) { .grid-3, .grid-4 { grid-template-columns: 1fr 1fr; } .grid-2 { grid-template-columns: 1fr; } }
+  .card { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; }
+  .card .label { font-size: 11px; color: var(--ink-4); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .card .value { font-size: 14px; font-weight: 500; color: var(--ink); line-height: 1.4; }
+
+  .diagram {
+    font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.5;
+    background: var(--bg-alt); border: 1px solid var(--line); border-radius: 6px;
+    padding: 18px 22px; overflow-x: auto; white-space: pre;
+    color: var(--ink-2); margin: 12px 0;
+  }
+
+  .toc { background: var(--bg-alt); border: 1px solid var(--line); border-radius: 6px; padding: 18px 24px; margin-bottom: 32px; }
+  .toc h3 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-3); font-weight: 600; }
+  .toc ol { columns: 2; column-gap: 32px; margin: 0; padding-left: 22px; }
+  .toc a { color: var(--ink-2); text-decoration: none; font-size: 13px; }
+  .toc a:hover { color: var(--accent); }
+
+  .changelog {
+    background: var(--accent-soft); border-left: 3px solid var(--accent);
+    padding: 14px 20px; margin-bottom: 32px; border-radius: 0 4px 4px 0; font-size: 13.5px;
+  }
+  .changelog h3 { margin: 0 0 6px; color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; }
+  .changelog ul { margin: 0; padding-left: 18px; }
+  .changelog li { margin-bottom: 2px; color: var(--ink-2); }
+
+  /* Task timeline */
+  .timeline {
+    border-left: 2px solid var(--line);
+    padding-left: 22px;
+    margin: 12px 0;
+    position: relative;
+  }
+  .timeline-item {
+    position: relative;
+    padding: 10px 0 10px 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .timeline-item:last-child { border-bottom: none; }
+  .timeline-item::before {
+    content: ""; position: absolute;
+    left: -28px; top: 16px;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 2px solid var(--line);
+  }
+  .timeline-item.now::before { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+  .timeline-item.new::before { background: var(--purple); border-color: var(--purple); }
+  .timeline-item .num {
+    display: inline-block; width: 36px; font-size: 11px; font-weight: 700;
+    color: var(--ink-4); font-family: ui-monospace, monospace;
+  }
+  .timeline-item .title { font-weight: 600; color: var(--ink); font-size: 14px; }
+  .timeline-item .meta { font-size: 12px; color: var(--ink-4); margin-top: 2px; padding-left: 36px; }
+  .timeline-item .badges { display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: middle; flex-wrap: wrap; }
+  .timeline-item.new .num { color: var(--purple); }
+
+  /* badges */
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 3px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+  .b-tdd { background: var(--purple-bg); color: var(--purple); }
+  .b-db { background: var(--blue-bg); color: var(--blue); }
+  .b-ui { background: var(--amber-bg); color: var(--amber); }
+  .b-deploy { background: var(--green-bg); color: var(--green); }
+  .b-config { background: var(--gray-bg); color: var(--gray); }
+  .b-test { background: var(--accent-soft); color: var(--accent); }
+  .b-new { background: var(--purple); color: #fff; }
+  .b-fix { background: var(--accent); color: #fff; }
+  .b-critical { background: #fef2f2; color: var(--accent); border: 1px solid var(--accent); }
+
+  /* shell mockup */
+  .mockup-wrap { background: var(--bg-alt); border: 1px solid var(--line); border-radius: 6px; padding: 16px; margin: 12px 0; }
+  .mockup { background: #fff; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; font-size: 11px; line-height: 1.4; }
+  .mk-shell { display: flex; min-height: 320px; }
+  .mk-side { background: var(--bg-deep); color: #d4d4d8; padding: 12px 10px; width: 175px; flex-shrink: 0; display: flex; flex-direction: column; }
+  .mk-side .brand { font-weight: 700; color: #fff; font-size: 12px; margin-bottom: 12px; padding-left: 4px; }
+  .mk-side .grp { font-size: 9px; color: #71717a; text-transform: uppercase; letter-spacing: 0.08em; margin: 12px 0 4px; padding-left: 4px; }
+  .mk-side .nav { padding: 5px 8px; border-radius: 4px; font-size: 12px; margin-bottom: 1px; display: flex; align-items: center; gap: 8px; }
+  .mk-side .nav .ic { width: 12px; opacity: 0.7; }
+  .mk-side .nav.active { background: #27272a; color: #fff; }
+  .mk-side .nav.disabled { color: #52525b; cursor: not-allowed; }
+  .mk-side .nav.disabled .soon { margin-left: auto; font-size: 9px; color: #52525b; text-transform: uppercase; }
+  .mk-side .footer { margin-top: auto; padding-top: 8px; border-top: 1px solid #27272a; padding-left: 4px; font-size: 10px; color: #71717a; }
+  .mk-main { flex: 1; display: flex; flex-direction: column; }
+  .mk-top { border-bottom: 1px solid var(--line); padding: 9px 16px; font-size: 12px; color: var(--ink-3); display: flex; justify-content: space-between; align-items: center; }
+  .mk-body { padding: 16px; flex: 1; }
+
+  .invite-flow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 14px; background: var(--bg-alt); border: 1px solid var(--line); border-radius: 6px; margin: 12px 0; font-size: 12px; }
+  .flow-step { background: #fff; border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; font-weight: 500; }
+  .flow-step.actor { background: var(--purple-bg); color: var(--purple); border-color: transparent; }
+  .flow-step.api { background: var(--blue-bg); color: var(--blue); border-color: transparent; }
+  .flow-step.db { background: var(--green-bg); color: var(--green); border-color: transparent; }
+  .flow-step.fix { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 700; }
+  .flow-arrow { color: var(--ink-4); font-size: 14px; }
+
+  /* Issue cards */
+  .issue-grid { display: grid; gap: 10px; grid-template-columns: 1fr; margin: 12px 0; }
+  .issue-card { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; display: flex; gap: 12px; align-items: flex-start; }
+  .issue-card .id { font-family: ui-monospace, monospace; font-size: 11px; font-weight: 700; color: var(--accent); flex-shrink: 0; padding-top: 1px; min-width: 32px; }
+  .issue-card .desc { flex: 1; font-size: 13.5px; }
+  .issue-card .desc strong { font-weight: 600; }
+  .issue-card .resolution { font-size: 12px; color: var(--green); margin-top: 4px; }
+  .issue-card .where { font-size: 11px; color: var(--ink-4); font-family: ui-monospace, monospace; margin-top: 2px; }
+
+  footer { background: var(--bg-alt); border-top: 1px solid var(--line); padding: 32px 0; margin-top: 48px; font-size: 13px; color: var(--ink-3); }
+  footer strong { color: var(--ink); }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="hero-tag">Implementation Plan · BIA Admin & CMS · <span class="rev">Rev 2 — Eng-reviewed</span></div>
+    <h1>Phase 1 — Foundation</h1>
+    <p class="sub">Stand up the <code style="background:rgba(255,255,255,0.1);color:#fbbf24;border-radius:3px;padding:2px 6px;font-size:13px">bia-admin</code> Next.js app with auth, role-gated middleware, and member invites. <strong style="color:#fff">Eng-reviewed 2026-05-08</strong>: 13 issues raised, 13 applied. Now 27 tasks, ~85% branch coverage on TDD-first paths.</p>
+    <div class="meta">
+      <div><strong>Date</strong>2026-05-08</div>
+      <div><strong>Owner</strong>Bobby Yang</div>
+      <div><strong>Phase</strong>1 of 4</div>
+      <div><strong>Tasks</strong>27 (was 21)</div>
+      <div><strong>Status</strong>Eng CLEAR — ready to implement</div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<div class="changelog">
+  <h3>Rev 2 changes (since rev 1, applied via /plan-eng-review)</h3>
+  <ul>
+    <li><strong>Task 0 added</strong> — create new GitHub repo <code>BIBOYANG425/bia-admin</code> and rewire local remote. Resolves Issue 5A: BIA 新生service and uscbia.com share a remote URL with disjoint local histories. Without this fix, the first push collides or destroys uscbia.com history.</li>
+    <li><strong>Task 11.5 added</strong> — <code>accept_invitation</code> RPC migration. Atomic invite acceptance (Issue 3A).</li>
+    <li><strong>Tasks 12a, 15a, 16a, 17a added</strong> — TDD test pairs FIRST for callback + 3 API routes. Coverage: 32% → ~85% (Issue T1A).</li>
+    <li><code>@bia/shared</code> <strong>split</strong> into framework-agnostic + <code>@bia/shared/next/*</code> subpaths (Issue 1A).</li>
+    <li>Invite email switched from <code>signInWithOtp</code> to <code>auth.admin.inviteUserByEmail</code> — templated invite, not generic magic link (Issue 2A).</li>
+    <li><code>requireRole()</code> now uses cookie-bound client + RLS self-read policy. Service-role reserved for cross-user reads (Issue 8A).</li>
+    <li><code>withRole()</code> helper added; 4 API route handlers refactored from inline try/catch (Issue 11A).</li>
+    <li><code>confirm()</code> in MembersClient replaced with shadcn <code>AlertDialog</code> (Issue 9).</li>
+    <li>TanStack Query + TanStack Table dropped from Phase 1 deps (deferred to Phase 2).</li>
+  </ul>
+</div>
+
+<div class="toc">
+  <h3>Contents</h3>
+  <ol>
+    <li><a href="#issues">Eng review applied</a></li>
+    <li><a href="#stack">Tech stack (rev 2)</a></li>
+    <li><a href="#shell">Shell preview</a></li>
+    <li><a href="#flow">Invite flow (post-fix)</a></li>
+    <li><a href="#tasks">Task timeline (27 tasks)</a></li>
+    <li><a href="#verify">Verification</a></li>
+    <li><a href="#next">After Phase 1</a></li>
+  </ol>
+</div>
+
+<!-- ISSUES APPLIED -->
+<section id="issues">
+  <div class="section-head">
+    <div class="num">01</div>
+    <h2>Eng review — 13 findings applied</h2>
+    <p class="lede">Each issue raised in <code>/plan-eng-review</code> with where it lives in the plan now.</p>
+  </div>
+
+  <h3>Architecture (5)</h3>
+  <div class="issue-grid">
+    <div class="issue-card">
+      <div class="id">5A</div>
+      <div class="desc">
+        <strong>Critical: BIA 新生service and uscbia.com point at same GitHub remote with disjoint local histories.</strong> First push without rewiring would collide or destroy uscbia.com history.
+        <div class="resolution">✓ Task 0 added — create <code>BIBOYANG425/bia-admin</code>, rewire local remote, push to new repo</div>
+        <div class="where">supabase/migrations/, plan §Tasks Task 0</div>
+      </div>
+    </div>
+    <div class="issue-card">
+      <div class="id">1A</div>
+      <div class="desc">
+        <strong>@bia/shared imports next/headers in supabase/server.ts</strong> — server-only constraint not documented; risks "cookies is not a function" errors in tests or non-Next consumers.
+        <div class="resolution">✓ Split into <code>@bia/shared/types</code>, <code>@bia/shared/supabase/{browser,service-role}</code> (framework-agnostic) and <code>@bia/shared/next/supabase/{server,middleware}</code> (server-only). Subpath exports in package.json make the constraint explicit at import time.</div>
+        <div class="where">packages/bia-shared/package.json, src/next/supabase/*</div>
+      </div>
+    </div>
+    <div class="issue-card">
+      <div class="id">2A</div>
+      <div class="desc">
+        <strong>Invite email used <code>signInWithOtp</code> — generic magic link, looks like phishing.</strong> Recipient gets unsolicited "sign in to BIA" with no invite context.
+        <div class="resolution">✓ Switched to <code>supabase.auth.admin.inviteUserByEmail()</code> — templated invite email (configurable in Supabase dashboard), creates auth.users row idle until accept.</div>
+        <div class="where">app/api/admin/members/invite/route.ts</div>
+      </div>
+    </div>
+    <div class="issue-card">
+      <div class="id">3A</div>
+      <div class="desc">
+        <strong>Invite acceptance was 2 separate Supabase calls.</strong> If "mark invitation accepted" fails after admin row inserted, invitation stays pending forever (cosmetic but confusing).
+        <div class="resolution">✓ Task 11.5 added — Postgres RPC <code>accept_invitation(invitation_id, user_id, email)</code> wraps both writes in one transaction. Idempotent on retry.</div>
+        <div class="where">supabase/migrations/20260508000003_accept_invitation_rpc.sql, app/auth/callback/route.ts</div>
+      </div>
+    </div>
+    <div class="issue-card">
+      <div class="id">7</div>
+      <div class="desc">
+        <strong>Verification step 4 doesn't acknowledge the seed-deferred path.</strong> Bobby's seed depends on auth.users row existing, which only happens after first sign-in.
+        <div class="resolution">✓ Footnote added to verification check #4 referencing Task 6 fallback + Task 20 step 5 re-run.</div>
+        <div class="where">plan §Verification</div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Code Quality (3)</h3>
+  <div class="issue-grid">
+    <div class="issue-card">
+      <div class="id">8A</div>
+      <div class="desc">
+        <strong>requireRole() used service-role for self-reads, bypassing the self-read RLS policy.</strong> Defense-in-depth gap: future bug extending requireRole() to read another table would silently bypass RLS.
+        <div class="resolution">✓ requireRole() now uses cookie-bound <code>createBiaServerClient()</code> for the self-read; RLS self-read policy on admin_users handles the .eq('id', user.id) lookup. Service-role stays in members/page.tsx for cross-user list reads.</div>
+        <div class="where">lib/auth/require-role.ts</div>
+      </div>
+    </div>
+    <div class="issue-card">
+      <div class="id">11A</div>
+      <div class="desc">
+        <strong>DRY: same try/catch RoleError block duplicated across 4 API route handlers.</strong> 4 instances of identical 6-line pattern.
+        <div class="resolution">✓ <code>withRole(min, handler)</code> wrapper added to lib/auth/require-role.ts. Each handler shrinks by 6 lines. New unit tests cover the wrapper's 3 paths.</div>
+        <div class="where">lib/auth/require-role.ts; all 4 API route handlers refactored</div>
+      </div>
+    </div>
+    <div class="issue-card">
+      <div class="id">9</div>
+      <div class="desc">
+        <strong>MembersClient used <code>window.confirm()</code> for the remove-admin flow.</strong> Inconsistent with shadcn design language; also blocks browser-automation tooling.
+        <div class="resolution">✓ Directive added to Task 19: replace confirm() with shadcn <code>AlertDialog</code>. <code>alert-dialog</code> added to Task 8 shadcn primitive list.</div>
+        <div class="where">app/(admin)/members/MembersClient.tsx</div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Test Coverage (1 finding, 5 tasks added)</h3>
+  <div class="issue-grid">
+    <div class="issue-card">
+      <div class="id">T1A</div>
+      <div class="desc">
+        <strong>Plan tested only requireRole(). All 4 API route handlers + auth callback + accept_invitation RPC had no unit tests — only manual smoke. ~28 untested branches.</strong>
+        <div class="resolution">✓ TDD test pairs interleaved before each impl task: <strong>9.5</strong> (require-role: +lookup_failed case + 3 withRole tests), <strong>12a</strong> (callback test FIRST: 6 cases), <strong>15a</strong> (invite test: 6 cases), <strong>16a</strong> (members [id]: 6 cases), <strong>17a</strong> (invitations [id]: 2 cases). Coverage: 32% → ~85%.</div>
+        <div class="where">5 new test files under app/.../__tests__/ + lib/auth/__tests__/</div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Performance (0)</h3>
+  <p style="font-size:13px;color:var(--ink-3)">No issues. Phase 1 reads <100 rows total. Bundle deps trimmed (TanStack moved to Phase 2).</p>
+</section>
+
+<hr>
+
+<!-- STACK -->
+<section id="stack">
+  <div class="section-head">
+    <div class="num">02</div>
+    <h2>Tech stack (rev 2)</h2>
+    <p class="lede">TanStack Query + Table dropped from Phase 1 — not used yet, deferred to Phase 2 when members table grows beyond simple HTML.</p>
+  </div>
+  <div class="grid grid-4">
+    <div class="card"><div class="label">Framework</div><div class="value">Next.js 16 · React 19</div></div>
+    <div class="card"><div class="label">Type system</div><div class="value">TypeScript strict</div></div>
+    <div class="card"><div class="label">Styling</div><div class="value">Tailwind v4 · shadcn/ui (zinc/slate + BIA red)</div></div>
+    <div class="card"><div class="label">Forms</div><div class="value">RHF + Zod + shadcn primitives</div></div>
+    <div class="card"><div class="label">Auth</div><div class="value">@supabase/ssr cookie sessions</div></div>
+    <div class="card"><div class="label">DB</div><div class="value">Supabase ujkaregrwrppaehvbahf</div></div>
+    <div class="card"><div class="label">Workspace</div><div class="value">pnpm workspaces</div></div>
+    <div class="card"><div class="label">Test</div><div class="value">vitest unit tests</div></div>
+    <div class="card"><div class="label">Repo</div><div class="value">NEW <code>BIBOYANG425/bia-admin</code></div></div>
+    <div class="card"><div class="label">Deploy</div><div class="value">Vercel · bia-admin.vercel.app</div></div>
+    <div class="card"><div class="label">Roles</div><div class="value">super_admin · editor · viewer</div></div>
+    <div class="card"><div class="label">DNS cutover</div><div class="value">Phase 4 (admin.uscbia.com)</div></div>
+  </div>
+</section>
+
+<hr>
+
+<!-- SHELL -->
+<section id="shell">
+  <div class="section-head">
+    <div class="num">03</div>
+    <h2>Shell preview</h2>
+    <p class="lede">/admin/members after Phase 1 ships. Disabled items show "soon" tooltip.</p>
+  </div>
+  <div class="mockup-wrap">
+    <div class="mockup mk-shell">
+      <div class="mk-side">
+        <div class="brand">BIA Admin</div>
+        <div class="grp">Content</div>
+        <div class="nav disabled"><span class="ic">📰</span> Blog<span class="soon">soon</span></div>
+        <div class="nav disabled"><span class="ic">🗓</span> Events<span class="soon">soon</span></div>
+        <div class="nav disabled"><span class="ic">⭐</span> Sponsors<span class="soon">soon</span></div>
+        <div class="grp">Community</div>
+        <div class="nav disabled"><span class="ic">👯</span> Squad mod<span class="soon">soon</span></div>
+        <div class="grp">Operations</div>
+        <div class="nav disabled"><span class="ic">📦</span> 集运<span class="soon">soon</span></div>
+        <div class="grp">People</div>
+        <div class="nav active"><span class="ic">👥</span> Members</div>
+        <div class="footer">
+          bobby@bia.usc.edu<br>
+          <span style="color:#a1a1aa">super admin</span>
+        </div>
+      </div>
+      <div class="mk-main">
+        <div class="mk-top">
+          <div>Members</div>
+          <div style="font-size: 11px; color: var(--ink-4)">Phase 1 · MVP</div>
+        </div>
+        <div class="mk-body">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div style="font-weight:600;font-size:14px">Active admins (2)</div>
+            <span class="pill pill-red" style="cursor:pointer">+ Invite admin</span>
+          </div>
+          <table style="width: 100%; font-size: 12px">
+            <thead><tr style="text-align:left;color:var(--ink-4);font-size:10px;text-transform:uppercase"><th style="padding:4px 0">Email</th><th>Role</th><th>Joined</th><th></th></tr></thead>
+            <tbody>
+              <tr style="border-top: 1px solid var(--line-soft)"><td style="padding:6px 0">yangb7777@gmail.com</td><td><span class="pill pill-red" style="font-size:10px">super admin</span></td><td style="color: var(--ink-4)">May 8</td><td>⋯</td></tr>
+              <tr style="border-top: 1px solid var(--line-soft)"><td style="padding:6px 0">cyrus@usc.edu</td><td><span class="pill pill-amber" style="font-size:10px">editor</span></td><td style="color: var(--ink-4)">May 8</td><td>⋯</td></tr>
+            </tbody>
+          </table>
+          <div style="margin-top:14px;font-weight:600;font-size:14px">Pending invites (1)</div>
+          <table style="width: 100%; font-size: 12px; margin-top: 6px">
+            <tbody>
+              <tr style="border-top: 1px solid var(--line-soft)"><td style="padding:6px 0">officer@usc.edu</td><td><span class="pill pill-gray" style="font-size:10px">viewer</span></td><td style="color: var(--ink-4)">May 8</td><td><span style="color:var(--accent);cursor:pointer;font-size:11px">Revoke</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr>
+
+<!-- FLOW -->
+<section id="flow">
+  <div class="section-head">
+    <div class="num">04</div>
+    <h2>Invite flow (post-review fixes)</h2>
+    <p class="lede">Now uses <code>inviteUserByEmail</code> (Issue 2A) and atomic <code>accept_invitation</code> RPC (Issue 3A).</p>
+  </div>
+
+  <div class="invite-flow">
+    <span class="flow-step actor">super_admin in /admin/members</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step">+ Invite, pick role</span>
+  </div>
+  <div class="invite-flow">
+    <span class="flow-step api">POST /api/admin/members/invite</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step fix">withRole('super_admin')</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step db">insert admin_invitations</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step fix">auth.admin.inviteUserByEmail()</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step db">audit_log: invite_sent</span>
+  </div>
+  <div class="invite-flow">
+    <span class="flow-step actor">Invitee gets templated invite email</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step">clicks link</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step api">GET /auth/callback?code=...</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step">exchangeCodeForSession</span>
+  </div>
+  <div class="invite-flow">
+    <span class="flow-step db">find pending invite by email</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step fix">RPC accept_invitation (atomic: insert + update)</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step db">audit_log: accept_invitation</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step actor">Redirect /admin</span>
+  </div>
+
+  <h3>Failure modes (now testable)</h3>
+  <table>
+    <tr><th>Where</th><th>Failure</th><th>Behavior</th><th>Tested?</th></tr>
+    <tr><td>Invite email already an admin</td><td>409</td><td><code>error: 'already_admin'</code></td><td>✓ Task 15a</td></tr>
+    <tr><td>Pending invite already exists</td><td>409</td><td>Unique partial index → <code>'already_invited'</code></td><td>✓ Task 15a</td></tr>
+    <tr><td>inviteUserByEmail fails</td><td>500 + rollback</td><td>Inserted invitation deleted</td><td>✓ Task 15a</td></tr>
+    <tr><td>Callback: no invite + no admin</td><td>—</td><td>signOut + <code>/login?denied=not-invited</code></td><td>✓ Task 12a</td></tr>
+    <tr><td>Callback: RPC fails</td><td>—</td><td>signOut + <code>/login?denied=invite_failed</code></td><td>✓ Task 12a</td></tr>
+    <tr><td>Editor PATCHes another admin</td><td>403</td><td><code>'role_required: super_admin'</code></td><td>✓ Task 16a</td></tr>
+    <tr><td>Self-mutation (Bobby)</td><td>400</td><td><code>'cannot_change_own_role'</code></td><td>✓ Task 16a</td></tr>
+    <tr><td>requireRole supabase down</td><td>403</td><td><code>'lookup_failed'</code> (new case)</td><td>✓ Task 9</td></tr>
+  </table>
+</section>
+
+<hr>
+
+<!-- TASKS -->
+<section id="tasks">
+  <div class="section-head">
+    <div class="num">05</div>
+    <h2>Task timeline — 27 tasks</h2>
+    <p class="lede">5 new (purple dots), 1 critical fix at top (red dot), rest unchanged from rev 1. TDD pairs in purple — write the failing test FIRST, then impl.</p>
+  </div>
+
+  <div class="timeline">
+
+    <div class="timeline-item now">
+      <span class="num">00</span><span class="title">Create new GitHub repo BIBOYANG425/bia-admin and rewire local remote</span>
+      <span class="badges"><span class="badge b-critical">critical fix</span><span class="badge b-config">config</span></span>
+      <div class="meta">Issue 5A. Both local clones share same remote URL with disjoint histories. <code>gh repo create BIBOYANG425/bia-admin --private</code>, <code>git remote set-url origin ...</code>, <code>git push -u origin main</code>. Without this, any future push collides or destroys uscbia.com history.</div>
+    </div>
+
+    <div class="timeline-item">
+      <span class="num">01</span><span class="title">Pnpm workspace bootstrap</span>
+      <span class="badges"><span class="badge b-config">config</span></span>
+      <div class="meta">pnpm-workspace.yaml, root package.json, tsconfig.base.json, .env.example.</div>
+    </div>
+
+    <div class="timeline-item new">
+      <span class="num">02</span><span class="title">Shared package — split into framework-agnostic + Next subpaths</span>
+      <span class="badges"><span class="badge b-fix">Issue 1A</span><span class="badge b-config">config</span></span>
+      <div class="meta"><code>@bia/shared/types</code> + <code>@bia/shared/supabase/{browser,service-role}</code> are framework-free. <code>@bia/shared/next/supabase/{server,middleware}</code> are Next-bound (server-only). Subpath exports make the constraint explicit at import.</div>
+    </div>
+
+    <div class="timeline-item">
+      <span class="num">03</span><span class="title">Baseline migration (placeholder)</span>
+      <span class="badges"><span class="badge b-db">db</span></span>
+      <div class="meta">Pin supabase/config.toml. Stub baseline (full schema dump deferred to Phase 2 — live DB already has all 39 tables).</div>
+    </div>
+
+    <div class="timeline-item">
+      <span class="num">04</span><span class="title">Migration — admin_users</span>
+      <span class="badges"><span class="badge b-db">db</span></span>
+      <div class="meta">CREATE TABLE with role check, FK to auth.users, RLS self-read policy. Apply via Supabase MCP.</div>
+    </div>
+
+    <div class="timeline-item">
+      <span class="num">05</span><span class="title">Migration — admin_invitations</span>
+      <span class="badges"><span class="badge b-db">db</span></span>
+      <div class="meta">CREATE TABLE with role check, FK to admin_users.id, accepted_at nullable. Unique partial index on lower(email) where accepted_at is null.</div>
+    </div>
+
+    <div class="timeline-item">
+      <span class="num">06</span><span class="title">Seed Bobby as super_admin</span>
+      <span class="badges"><span class="badge b-db">db</span></span>
+      <div class="meta">Returns 0 rows if Bobby never authenticated yet — fine, re-run after Task 21.5 first sign-in.</div>
+    </div>
+
+    <div class="timeline-item">
+      <span class="num">07</span><span class="title">Bootstrap bia-admin Next.js app</span>
+      <span class="badges"><span class="badge b-config">config</span></span>
+      <div class="meta">Hand-create config files. <code>turbopack.root: __dirname</code>. globals.css with BIA red token. <strong>TanStack deps removed</strong>.</div>
+    </div>
+
+    <div class="timeline-item">
+      <span class="num">08</span><span class="title">Add shadcn primitives — including alert-dialog</span>
+      <span class="badges"><span class="badge b-ui">ui</span></span>
+      <div class="meta">11 primitives: button, card, dialog, <strong>alert-dialog</strong>, input, label, select, dropdown-menu, sheet, table, form.</div>
+    </div>
+
+    <div class="timeline-item">
+      <span class="num">09</span><span class="title">requireRole() + withRole() helpers + tests</span>
+      <span class="badges"><span class="badge b-fix">Issue 8A + 11A</span><span class="badge b-tdd">TDD</span></span>
+      <div class="meta">Tests cover: roleAtLeast (3 cases), requireRole (5 cases incl. new <strong>lookup_failed</strong>), withRole (3 cases). requireRole uses cookie-bound client + RLS self-read. withRole maps RoleError to NextResponse.</div>
+    </div>
+
+    <div class="timeline-item">
+      <span class="num">10</span><span class="title">Middleware</span>
+      <span class="badges"><span class="badge b-config">config</span></span>
+      <div class="meta">3-line middleware.ts calling <code>updateBiaSession()</code>. Imports from <code>@bia/shared/next/supabase/middleware</code>.</div>
+    </div>
+
+    <div class="timeline-item">
+      <span class="num">11</span><span class="title">Login page (Google + magic link)</span>
+      <span class="badges"><span class="badge b-ui">ui</span></span>
+      <div class="meta">Client component with Google OAuth + email magic link.</div>
+    </div>
+
+    <div class="timeline-item new">
+      <span class="num">11.5</span><span class="title">Migration — accept_invitation RPC (atomic invite acceptance)</span>
+      <span class="badges"><span class="badge b-fix">Issue 3A</span><span class="badge b-db">db</span></span>
+      <div class="meta">Postgres function wrapping insert admin_users + update admin_invitations.accepted_at in one transaction. <code>security definer</code>, <code>grant execute to service_role</code>. Idempotent on retry.</div>
+    </div>
+
+    <div class="timeline-item new">
+      <span class="num">12a</span><span class="title">TDD test for auth callback (FIRST)</span>
+      <span class="badges"><span class="badge b-fix">Issue T1A</span><span class="badge b-tdd">TDD</span></span>
+      <div class="meta">6 cases: no code, exchange fails, no user/email, existing admin, pending invite + RPC success, no invite + no admin.</div>
+    </div>
+
+    <div class="timeline-item new">
+      <span class="num">12</span><span class="title">Auth callback — uses accept_invitation RPC</span>
+      <span class="badges"><span class="badge b-fix">Issue 3A</span></span>
+      <div class="meta">Atomic accept via RPC instead of two separate writes. signOut + redirect on no-invite / RPC-fail. Audit log best-effort after RPC success.</div>
+    </div>
+
+    <div class="timeline-item">
+      <span class="num">13</span><span class="title">Admin shell (sidebar + topbar)</span>
+      <span class="badges"><span class="badge b-ui">ui</span></span>
+      <div class="meta">AdminShell server component, SidebarNav client subcomponent. 5 disabled "soon" items + Members enabled.</div>
+    </div>
+
+    <div class="timeline-item">
+      <span class="num">14</span><span class="title">Audit log helper</span>
+      <span class="badges"><span class="badge b-config">config</span></span>
+      <div class="meta">writeAudit() wrapper. Never throws.</div>
+    </div>
+
+    <div class="timeline-item new">
+      <span class="num">15a</span><span class="title">TDD test for invite endpoint (FIRST)</span>
+      <span class="badges"><span class="badge b-fix">Issue T1A</span><span class="badge b-tdd">TDD</span></span>
+      <div class="meta">6 cases: 403 not super_admin, 400 invalid body, 409 already_admin, 409 already_invited (unique idx), 500 with rollback on email fail, 200 success calling inviteUserByEmail.</div>
+    </div>
+
+    <div class="timeline-item">
+      <span class="num">15</span><span class="title">Invite endpoint — inviteUserByEmail + withRole</span>
+      <span class="badges"><span class="badge b-fix">Issue 2A + 11A</span></span>
+      <div class="meta">Templated invite email instead of generic magic link. withRole() wrapper instead of inline try/catch. Rollback invitation row on email send failure.</div>
+    </div>
+
+    <div class="timeline-item new">
+      <span class="num">16a</span><span class="title">TDD test for [id] PATCH/DELETE (FIRST)</span>
+      <span class="badges"><span class="badge b-fix">Issue T1A</span><span class="badge b-tdd">TDD</span></span>
+      <div class="meta">6 cases: PATCH 403/400/400-self-mutation/200, DELETE 403/400-self-delete/200.</div>
+    </div>
+
+    <div class="timeline-item">
+      <span class="num">16</span><span class="title">PATCH/DELETE /api/admin/members/[id] — withRole</span>
+      <span class="badges"><span class="badge b-fix">Issue 11A</span></span>
+      <div class="meta">Both gated to super_admin via withRole(). Self-mutation guard.</div>
+    </div>
+
+    <div class="timeline-item new">
+      <span class="num">17a</span><span class="title">TDD test for invitations [id] DELETE (FIRST)</span>
+      <span class="badges"><span class="badge b-fix">Issue T1A</span><span class="badge b-tdd">TDD</span></span>
+      <div class="meta">2 cases: 403 not super_admin, 200 success + audit with prior email.</div>
+    </div>
+
+    <div class="timeline-item">
+      <span class="num">17</span><span class="title">DELETE /api/admin/members/invitations/[id] — withRole</span>
+      <span class="badges"><span class="badge b-fix">Issue 11A</span></span>
+      <div class="meta">Revoke pending invitation via withRole().</div>
+    </div>
+
+    <div class="timeline-item">
+      <span class="num">18</span><span class="title">Members page — server component</span>
+      <span class="badges"><span class="badge b-ui">ui</span></span>
+      <div class="meta">Reads admin_users + pending invitations via service-role (cross-user reads stay service-role per Issue 8A scope). <code>dynamic = 'force-dynamic'</code>.</div>
+    </div>
+
+    <div class="timeline-item">
+      <span class="num">19</span><span class="title">Members page — client component (AlertDialog instead of confirm)</span>
+      <span class="badges"><span class="badge b-fix">Issue 9</span><span class="badge b-ui">ui</span></span>
+      <div class="meta">Invite Dialog, role dropdown, revoke button. <strong>shadcn AlertDialog</strong> replaces window.confirm() for remove-admin.</div>
+    </div>
+
+    <div class="timeline-item">
+      <span class="num">20</span><span class="title">Local end-to-end smoke test</span>
+      <span class="badges"><span class="badge b-test">test</span></span>
+      <div class="meta">12 manual steps. Includes seed re-run if Task 6 deferred.</div>
+    </div>
+
+    <div class="timeline-item">
+      <span class="num">21</span><span class="title">Vercel deploy + production smoke</span>
+      <span class="badges"><span class="badge b-deploy">deploy</span></span>
+      <div class="meta">Configure Google OAuth in Supabase. New Vercel project on the new GitHub repo, root <code>bia-admin/</code>. 4 env vars. Production smoke against bia-admin.vercel.app.</div>
+    </div>
+
+  </div>
+
+  <p style="font-size:13px;color:var(--ink-3);margin-top:16px"><strong>Time estimate:</strong> ~5–7 hours of focused human work, ~45–75 minutes of CC-driven work. Sequential execution recommended (small enough that worktree parallelism adds more coordination cost than it saves).</p>
+</section>
+
+<hr>
+
+<!-- VERIFY -->
+<section id="verify">
+  <div class="section-head">
+    <div class="num">06</div>
+    <h2>Verification checklist</h2>
+    <p class="lede">12 checks. Phase 1 ships when all pass.</p>
+  </div>
+  <table>
+    <tr><th>#</th><th>Check</th><th>Expected</th></tr>
+    <tr><td>1</td><td><code>pnpm install &amp;&amp; pnpm -r build</code> from root</td><td>exits 0</td></tr>
+    <tr><td>2</td><td><code>pnpm --filter bia-admin test</code></td><td>all tests PASS (~28 cases including TDD pairs)</td></tr>
+    <tr><td>3</td><td>MCP <code>list_tables</code> shows admin_users + admin_invitations</td><td>yes</td></tr>
+    <tr><td>4</td><td><code>list_migrations</code> shows accept_invitation_rpc</td><td>yes</td></tr>
+    <tr><td>5</td><td>Bobby seeded as super_admin (re-run after first sign-in if needed)</td><td>yes</td></tr>
+    <tr><td>6</td><td>Local <code>/</code> → redirect <code>/login</code></td><td>yes</td></tr>
+    <tr><td>7</td><td>Google sign-in lands on <code>/admin</code></td><td>yes</td></tr>
+    <tr><td>8</td><td><code>/admin/members</code> shows Bobby + Invite button</td><td>yes</td></tr>
+    <tr><td>9</td><td>Invite test email → row in Pending + <strong>templated invite email</strong> arrives</td><td>yes</td></tr>
+    <tr><td>10</td><td>Accept invite (incognito) → row moves to Active</td><td>yes</td></tr>
+    <tr><td>11</td><td>Editor PATCH Bobby → 403 role_required: super_admin</td><td>yes</td></tr>
+    <tr><td>12</td><td>Production smoke against <code>bia-admin.vercel.app</code></td><td>yes</td></tr>
+  </table>
+</section>
+
+<hr>
+
+<!-- NEXT -->
+<section id="next">
+  <div class="section-head">
+    <div class="num">07</div>
+    <h2>After Phase 1</h2>
+    <p class="lede">Each phase gets its own plan + eng review.</p>
+  </div>
+  <div class="grid grid-3">
+    <div class="card">
+      <div class="label">Phase 2 — New domains</div>
+      <div class="value"><strong>Blog, Events, Sponsors, Squad-mod.</strong> HTML drop pipeline, public <code>/blog</code> reader on uscbia.com, replace landing-page placeholder cards, BIA Events admin + landing hero, Sponsors CRUD, Squad moderation page. <em>Plan file: TBD</em></div>
+    </div>
+    <div class="card">
+      <div class="label">Phase 3 — Shipping port</div>
+      <div class="value"><strong>集运.</strong> Port shipping pages from <code>uscbia.com/admin/shipping</code> into bia-admin with shadcn primitives + role gate. <em>Plan file: TBD</em></div>
+    </div>
+    <div class="card">
+      <div class="label">Phase 4 — Cleanup</div>
+      <div class="value"><strong>Remove old admin.</strong> Delete <code>app/admin/*</code> from uscbia.com. Point <code>admin.uscbia.com</code> DNS at the Vercel project. <em>Plan file: TBD</em></div>
+    </div>
+  </div>
+</section>
+
+</div><!-- /wrap -->
+
+<footer>
+  <div class="wrap">
+    <p><strong>BIA Admin · Phase 1 Foundation · Implementation Plan rev 2 · 2026-05-08</strong></p>
+    <p>Eng-reviewed via <code>/plan-eng-review</code> 2026-05-08 → 13 issues raised, 13 applied. Companion to <code>docs/superpowers/plans/2026-05-08-bia-admin-phase1-foundation.md</code>. <strong>VERDICT: ENG CLEARED — ready to implement.</strong></p>
+  </div>
+</footer>
+
+</body>
+</html>
