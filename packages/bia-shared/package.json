@@ -1,0 +1,26 @@
+{
+  "name": "@bia/shared",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts",
+    "./supabase/browser": "./src/supabase/browser.ts",
+    "./supabase/service-role": "./src/supabase/service-role.ts",
+    "./next/supabase/server": "./src/next/supabase/server.ts",
+    "./next/supabase/middleware": "./src/next/supabase/middleware.ts"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.5.0",
+    "@supabase/supabase-js": "^2.45.0"
+  },
+  "peerDependencies": {
+    "next": "^16.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^20.0.0"
+  }
+}
