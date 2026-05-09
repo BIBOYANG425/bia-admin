@@ -29,7 +29,7 @@ export default function SignInForm() {
     const { error } = await supa.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${origin}/auth/callback?next=${encodeURIComponent(returnTo)}`,
+        redirectTo: `${origin}/auth/callback`,
       },
     });
     if (error) {
@@ -47,7 +47,7 @@ export default function SignInForm() {
     const { error } = await supa.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(returnTo)}`,
+        emailRedirectTo: `${origin}/auth/callback`,
         shouldCreateUser: true,
       },
     });
