@@ -1,4 +1,4 @@
-import { createBiaServiceRoleClient } from "@bia/shared";
+import { createBiaServiceRoleClient } from "@biboyang425/bia-shared";
 
 export interface AuditEntry {
   admin_email: string;

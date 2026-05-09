@@ -10,7 +10,7 @@ importers:
 
   bia-admin:
     dependencies:
-      '@bia/shared':
+      '@biboyang425/bia-shared':
         specifier: workspace:*
         version: link:../packages/bia-shared
       '@hookform/resolvers':

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextResponse } from "next/server";
-import { roleAtLeast } from "@bia/shared";
+import { roleAtLeast } from "@biboyang425/bia-shared";
 import { requireRole, withRole, RoleError } from "../require-role";
 
 describe("roleAtLeast", () => {
@@ -27,15 +27,15 @@ const mockGetUser = vi.fn();
 const mockServerFrom = vi.fn(); // cookie-bound client (self-read)
 const mockServiceFrom = vi.fn(); // service-role client (cross-user reads)
 
-vi.mock("@bia/shared/next/supabase/server", () => ({
+vi.mock("@biboyang425/bia-shared/next/supabase/server", () => ({
   createBiaServerClient: async () => ({
     auth: { getUser: mockGetUser },
     from: mockServerFrom,
   }),
 }));
 
-vi.mock("@bia/shared", async (importActual) => {
-  const actual = await importActual<typeof import("@bia/shared")>();
+vi.mock("@biboyang425/bia-shared", async (importActual) => {
+  const actual = await importActual<typeof import("@biboyang425/bia-shared")>();
   return {
     ...actual,
     createBiaServiceRoleClient: () => ({ from: mockServiceFrom }),

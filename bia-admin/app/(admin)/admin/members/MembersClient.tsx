@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { MoreHorizontal, Plus } from "lucide-react";
-import type { Role, AdminUser, AdminInvitation } from "@bia/shared";
+import type { Role, AdminUser, AdminInvitation } from "@biboyang425/bia-shared";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

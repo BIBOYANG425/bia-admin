@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createBiaServiceRoleClient } from "@bia/shared";
+import { createBiaServiceRoleClient } from "@biboyang425/bia-shared";
 import { withRole } from "@/lib/auth/require-role";
 import { writeAudit } from "@/lib/admin/audit-log";
 

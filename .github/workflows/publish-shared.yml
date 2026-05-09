@@ -1,0 +1,65 @@
+name: Publish @biboyang425/bia-shared
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/bia-shared/**"
+      - ".github/workflows/publish-shared.yml"
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://npm.pkg.github.com
+          scope: "@biboyang425"
+
+      - name: Install workspace deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Read package version
+        id: pkg
+        working-directory: packages/bia-shared
+        run: echo "version=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
+
+      - name: Check if version already published
+        id: check
+        run: |
+          if pnpm view "@biboyang425/bia-shared@${{ steps.pkg.outputs.version }}" version --registry=https://npm.pkg.github.com 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Version ${{ steps.pkg.outputs.version }} already published, skipping."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false'
+        working-directory: packages/bia-shared
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        run: |
+          if [ "${{ steps.check.outputs.exists }}" = "true" ]; then
+            echo "Skipped: @biboyang425/bia-shared@${{ steps.pkg.outputs.version }} already exists" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Published @biboyang425/bia-shared@${{ steps.pkg.outputs.version }} to GitHub Packages" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "View at: https://github.com/BIBOYANG425/bia-admin/packages" >> "$GITHUB_STEP_SUMMARY"
+          fi

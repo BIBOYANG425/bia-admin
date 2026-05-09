@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createBiaServerClient } from "@bia/shared/next/supabase/server";
+import { createBiaServerClient } from "@biboyang425/bia-shared/next/supabase/server";
 
 export async function POST(request: Request) {
   const supa = await createBiaServerClient();

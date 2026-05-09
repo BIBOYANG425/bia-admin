@@ -14,15 +14,15 @@ const {
   mockWriteAudit: vi.fn(),
 }));
 
-vi.mock("@bia/shared/next/supabase/server", () => ({
+vi.mock("@biboyang425/bia-shared/next/supabase/server", () => ({
   createBiaServerClient: async () => ({
     auth: { getUser: mockGetUser },
     from: mockServerFrom,
   }),
 }));
 
-vi.mock("@bia/shared", async (importActual) => {
-  const actual = await importActual<typeof import("@bia/shared")>();
+vi.mock("@biboyang425/bia-shared", async (importActual) => {
+  const actual = await importActual<typeof import("@biboyang425/bia-shared")>();
   return {
     ...actual,
     createBiaServiceRoleClient: () => ({

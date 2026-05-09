@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createBiaServiceRoleClient } from "@bia/shared";
-import { createBiaServerClient } from "@bia/shared/next/supabase/server";
+import { createBiaServiceRoleClient } from "@biboyang425/bia-shared";
+import { createBiaServerClient } from "@biboyang425/bia-shared/next/supabase/server";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);

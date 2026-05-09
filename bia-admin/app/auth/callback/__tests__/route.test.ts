@@ -7,7 +7,7 @@ const mockSignOut = vi.fn();
 const mockServiceFrom = vi.fn();
 const mockRpc = vi.fn();
 
-vi.mock("@bia/shared/next/supabase/server", () => ({
+vi.mock("@biboyang425/bia-shared/next/supabase/server", () => ({
   createBiaServerClient: async () => ({
     auth: {
       exchangeCodeForSession: mockExchangeCode,
@@ -17,8 +17,8 @@ vi.mock("@bia/shared/next/supabase/server", () => ({
   }),
 }));
 
-vi.mock("@bia/shared", async (importActual) => {
-  const actual = await importActual<typeof import("@bia/shared")>();
+vi.mock("@biboyang425/bia-shared", async (importActual) => {
+  const actual = await importActual<typeof import("@biboyang425/bia-shared")>();
   return {
     ...actual,
     createBiaServiceRoleClient: () => ({

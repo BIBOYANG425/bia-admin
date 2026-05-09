@@ -3,8 +3,8 @@ import {
   roleAtLeast,
   type AdminUser,
   type Role,
-} from "@bia/shared";
-import { createBiaServerClient } from "@bia/shared/next/supabase/server";
+} from "@biboyang425/bia-shared";
+import { createBiaServerClient } from "@biboyang425/bia-shared/next/supabase/server";
 
 export class RoleError extends Error {
   constructor(

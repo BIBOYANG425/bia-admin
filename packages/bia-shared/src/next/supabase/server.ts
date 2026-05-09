@@ -1,6 +1,6 @@
 // Server-only — requires Next 16 `next/headers`. Importing this module from
 // non-Next code (tests, scripts, framework-agnostic libs) will fail at import
-// time. Use @bia/shared/supabase/browser or @bia/shared/supabase/service-role
+// time. Use @biboyang425/bia-shared/supabase/browser or @biboyang425/bia-shared/supabase/service-role
 // for non-Next contexts.
 //
 // Header last reviewed: 2026-05-08

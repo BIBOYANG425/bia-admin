@@ -1,4 +1,4 @@
-import { createBiaServiceRoleClient } from "@bia/shared";
+import { createBiaServiceRoleClient } from "@biboyang425/bia-shared";
 import { requireRole } from "@/lib/auth/require-role";
 import MembersClient from "./MembersClient";
 
