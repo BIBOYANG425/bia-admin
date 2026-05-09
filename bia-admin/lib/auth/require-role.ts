@@ -53,11 +53,15 @@ export async function requireRole(min: Role): Promise<RequireRoleResult> {
 /**
  * Wraps an API route handler with role gating + standard error mapping.
  * Replaces the duplicated try/catch pattern across handlers.
+ *
+ * Returns are typed as NextResponse (no generic) so handlers can freely
+ * return union response types (success JSON vs error JSON) without
+ * fighting the type system.
  */
-export async function withRole<T>(
+export async function withRole(
   min: Role,
-  handler: (ctx: RequireRoleResult) => Promise<NextResponse<T>>,
-): Promise<NextResponse<T> | NextResponse<{ error: string }>> {
+  handler: (ctx: RequireRoleResult) => Promise<NextResponse>,
+): Promise<NextResponse> {
   try {
     const ctx = await requireRole(min);
     return await handler(ctx);
