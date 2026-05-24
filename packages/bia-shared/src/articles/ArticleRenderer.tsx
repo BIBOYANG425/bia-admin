@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { sanitizeArticleHtml } from "./sanitize";
 
 export interface ArticleRendererProps {
   html: string;
@@ -28,24 +27,26 @@ const DOC_HEAD = `<!doctype html>
 const DOC_TAIL = "</body></html>";
 
 /**
- * Renders sanitized article HTML inside a sandboxed iframe.
+ * Renders article HTML inside a sandboxed iframe.
  *
  * The iframe gives us:
  *   - Style isolation — the article's CSS can't bleed into the host page
- *   - Script isolation — sandbox blocks any inline scripts even if a
- *     novel XSS payload slipped past the sanitizer
+ *   - Script isolation — sandbox="allow-same-origin" blocks any inline
+ *     scripts (no allow-scripts), so script-based XSS can't execute even
+ *     if it somehow slipped past write-time sanitize
  *   - Full design fidelity — the article ships its own <style>, classes,
  *     images, and layout markup, and they all render as authored
  *
- * `sandbox="allow-same-origin"` lets the parent JS read the iframe's
- * scrollHeight to auto-size; scripts inside the iframe remain blocked.
+ * Trust model: the API sanitizes HTML on write (see sanitizeArticleHtml).
+ * This renderer trusts its input and the sandbox is the runtime safety
+ * net — keeping it dependency-free avoids dragging isomorphic-dompurify
+ * + jsdom into every consumer's server bundle.
  */
 export function ArticleRenderer({ html, className }: ArticleRendererProps) {
   const iframeRef = React.useRef<HTMLIFrameElement | null>(null);
   const [height, setHeight] = React.useState(640);
 
-  const safeHtml = sanitizeArticleHtml(html);
-  const srcDoc = `${DOC_HEAD}${safeHtml}${DOC_TAIL}`;
+  const srcDoc = `${DOC_HEAD}${html ?? ""}${DOC_TAIL}`;
 
   const measure = React.useCallback(() => {
     const iframe = iframeRef.current;
