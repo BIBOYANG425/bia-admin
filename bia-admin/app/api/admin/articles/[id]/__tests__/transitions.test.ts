@@ -5,12 +5,14 @@ const {
   auditMock,
   serviceFromMock,
   maybeSingleMock,
+  slugLookupMock,
   updateMock,
 } = vi.hoisted(() => ({
   requireRoleMock: vi.fn(),
   auditMock: vi.fn(),
   serviceFromMock: vi.fn(),
   maybeSingleMock: vi.fn(),
+  slugLookupMock: vi.fn(),
   updateMock: vi.fn(),
 }));
 
@@ -79,6 +81,7 @@ function setupArticleTable() {
   serviceFromMock.mockReturnValue({
     select: () => ({
       eq: () => ({ maybeSingle: maybeSingleMock }),
+      in: slugLookupMock,
     }),
     update: updateMock,
   });
@@ -100,24 +103,28 @@ describe("article transitions", () => {
     auditMock.mockReset();
     serviceFromMock.mockReset();
     maybeSingleMock.mockReset();
+    slugLookupMock.mockReset();
     updateMock.mockReset();
 
     requireRoleMock.mockResolvedValue(editor);
     setupArticleTable();
+    // Default: no slug collisions.
+    slugLookupMock.mockResolvedValue({ data: [], error: null });
   });
 
   it("submit transitions draft to in_review and audits", async () => {
     maybeSingleMock.mockResolvedValue({
-      data: { id: "article-1", status: "draft" },
+      data: { id: "article-1", status: "draft", slug: "welcome" },
       error: null,
     });
-    updateOk({ id: "article-1", status: "in_review" });
+    updateOk({ id: "article-1", status: "in_review", slug: "welcome" });
 
     const res = await submit(request(), ctx());
 
     expect(res.status).toBe(200);
     expect(updateMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        slug: "welcome",
         status: "in_review",
         submitted_by: "u1",
       }),
@@ -127,9 +134,31 @@ describe("article transitions", () => {
     );
   });
 
+  it("submit bumps slug suffix when a non-draft article already owns the slug", async () => {
+    maybeSingleMock.mockResolvedValue({
+      data: { id: "article-1", status: "draft", slug: "welcome" },
+      error: null,
+    });
+    slugLookupMock.mockResolvedValue({
+      data: [{ id: "article-2", slug: "welcome", status: "published" }],
+      error: null,
+    });
+    updateOk({ id: "article-1", status: "in_review", slug: "welcome-2" });
+
+    const res = await submit(request(), ctx());
+
+    expect(res.status).toBe(200);
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        slug: "welcome-2",
+        status: "in_review",
+      }),
+    );
+  });
+
   it("submit rejects non-draft source status", async () => {
     maybeSingleMock.mockResolvedValue({
-      data: { id: "article-1", status: "published" },
+      data: { id: "article-1", status: "published", slug: "welcome" },
       error: null,
     });
 
@@ -212,6 +241,35 @@ describe("article transitions", () => {
     const res = await publish(request(), ctx());
 
     expect(res.status).toBe(200);
+  });
+
+  it("publish bumps slug suffix when another published article owns the slug", async () => {
+    requireRoleMock.mockResolvedValue(superAdmin);
+    maybeSingleMock.mockResolvedValue({
+      data: { id: "article-1", status: "in_review", slug: "welcome" },
+      error: null,
+    });
+    slugLookupMock.mockResolvedValue({
+      data: [{ id: "article-9", slug: "welcome", status: "published" }],
+      error: null,
+    });
+    updateOk({ id: "article-1", status: "published", slug: "welcome-2" });
+
+    const res = await publish(request(), ctx());
+
+    expect(res.status).toBe(200);
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        slug: "welcome-2",
+        status: "published",
+      }),
+    );
+    expect(auditMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "article.publish",
+        payload: { slug: "welcome-2" },
+      }),
+    );
   });
 
   it("publish rejects draft source status", async () => {
