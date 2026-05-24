@@ -46,6 +46,9 @@ export interface Article {
   published_by: string | null;
   unpublished_at: string | null;
   unpublished_by: string | null;
+  rejected_at: string | null;
+  rejected_by: string | null;
+  rejection_reason: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -14,15 +14,23 @@ function decodeEntities(text: string): string {
     .replace(/&#39;/gi, "'");
 }
 
+// Sanitize keeps <style> contents for design fidelity, but the excerpt should
+// reflect article copy, not CSS or script residue. Strip non-content tags'
+// inner text before extracting.
+const NON_CONTENT_TAG_RE = /<(script|style|noscript|template)[^>]*>[\s\S]*?<\/\1>/gi;
+
 export function createArticleExcerpt(
   html: string,
   { maxLength = 200 }: ExcerptOptions = {},
 ): string {
-  // Decode entities BEFORE collapsing whitespace so &nbsp; (→  ) gets
-  // folded along with other whitespace runs.
-  const text = decodeEntities(sanitizeArticleHtml(html).replace(/<[^>]*>/g, " "))
-    .replace(/\s+/g, " ")
-    .trim();
+  // Strip <script>/<style>/etc. blocks (tag + content) BEFORE sanitize.
+  // The sanitizer removes <script> tags but leaves their inner text as
+  // orphan nodes; doing the strip first prevents that leakage.
+  const preStripped = html.replace(NON_CONTENT_TAG_RE, " ");
+  // Then run the full sanitizer to drop remaining HTML safely.
+  // Decode entities before collapsing whitespace so &nbsp; folds with the rest.
+  const tagless = sanitizeArticleHtml(preStripped).replace(/<[^>]*>/g, " ");
+  const text = decodeEntities(tagless).replace(/\s+/g, " ").trim();
 
   if (!text) return "";
   if (text.length <= maxLength) return text;
