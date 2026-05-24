@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phase 2A — Blog Implementation Plan (rev 2)</title>
+<style>
+  :root {
+    --bg:        #0b0d10;
+    --bg-card:   #14171c;
+    --bg-elev:   #1c2026;
+    --line:      #262b32;
+    --line-2:    #343a44;
+    --ink:       #e7eaee;
+    --ink-dim:   #9aa3ad;
+    --ink-soft:  #6f7884;
+    --accent:    #ff5050;
+    --accent-2:  #ffb84d;
+    --good:      #46d68a;
+    --warn:      #ffb84d;
+    --bad:       #ff7373;
+    --info:      #6eb9ff;
+    --code-bg:   #0f1217;
+    --mono:      ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --serif:     "Söhne", "Noto Serif", Georgia, serif;
+    --sans:      -apple-system, BlinkMacSystemFont, "SF Pro Text", Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); }
+  body { font-size: 15px; line-height: 1.55; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 56px 32px 96px; }
+
+  /* Hero */
+  header.hero {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 32px;
+    margin-bottom: 40px;
+  }
+  .eyebrow {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    padding: 4px 10px;
+    border: 1px solid var(--accent);
+    border-radius: 99px;
+    margin-bottom: 16px;
+  }
+  h1 {
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 40px;
+    line-height: 1.1;
+    margin: 0 0 12px;
+    letter-spacing: -0.02em;
+  }
+  .lede {
+    color: var(--ink-dim);
+    font-size: 16px;
+    max-width: 760px;
+    margin: 0;
+  }
+  .meta-row {
+    display: flex; gap: 24px; flex-wrap: wrap;
+    margin-top: 22px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-soft);
+  }
+  .meta-row span b { color: var(--ink); font-weight: 600; }
+
+  /* Section */
+  section { margin-top: 56px; }
+  h2 {
+    font-size: 24px;
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+  h2 + .h2-sub { color: var(--ink-soft); font-size: 13px; margin-bottom: 24px; font-family: var(--mono); }
+
+  /* Grid of cards */
+  .grid { display: grid; gap: 14px; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+
+  /* Task cards */
+  .task {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 20px;
+    transition: border-color 0.15s;
+  }
+  .task:hover { border-color: var(--line-2); }
+  .task-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .task-id {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-soft);
+    background: var(--bg-elev);
+    padding: 2px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.04em;
+  }
+  .task h3 {
+    font-size: 15px;
+    margin: 0;
+    flex: 1;
+    font-weight: 600;
+  }
+  .badges { display: flex; gap: 6px; flex-wrap: wrap; }
+  .badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border: 1px solid;
+  }
+  .b-db    { color: var(--info); border-color: var(--info); }
+  .b-shared{ color: #c08eff; border-color: #c08eff; }
+  .b-admin { color: var(--accent-2); border-color: var(--accent-2); }
+  .b-public{ color: var(--good); border-color: var(--good); }
+  .b-tdd   { color: var(--ink); border-color: var(--line-2); background: var(--bg-elev); }
+  .b-ship  { color: var(--bad); border-color: var(--bad); }
+
+  .task-body { color: var(--ink-dim); font-size: 13.5px; }
+  .task-body strong { color: var(--ink); font-weight: 600; }
+  .files {
+    margin-top: 12px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-soft);
+    border-top: 1px dashed var(--line);
+    padding-top: 10px;
+  }
+  .files div { padding: 2px 0; }
+  .files div::before { content: "› "; color: var(--ink-soft); }
+
+  /* State machine */
+  .machine {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 28px;
+    margin-top: 20px;
+  }
+  .states { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+  .state {
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 10px 16px;
+    border-radius: 99px;
+    border: 1px solid;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+  .s-draft        { color: var(--ink-dim); border-color: var(--line-2); }
+  .s-in_review    { color: var(--warn); border-color: var(--warn); background: rgba(255,184,77,0.08); }
+  .s-published    { color: var(--good); border-color: var(--good); background: rgba(70,214,138,0.08); }
+  .s-unpublished  { color: var(--bad); border-color: var(--bad); background: rgba(255,115,115,0.08); }
+  .arrow {
+    color: var(--ink-soft);
+    font-family: var(--mono);
+    font-size: 11px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .arrow b { color: var(--ink); }
+  .role { font-size: 10px; color: var(--ink-soft); text-transform: lowercase; }
+
+  /* Codex fixes table */
+  table.fixes {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  table.fixes th, table.fixes td {
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--line);
+    font-size: 13.5px;
+    vertical-align: top;
+  }
+  table.fixes th {
+    background: var(--bg-elev);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    font-weight: 500;
+  }
+  table.fixes tr:last-child td { border-bottom: 0; }
+  table.fixes td:first-child {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-soft);
+    width: 60px;
+    padding-right: 4px;
+  }
+  .pill-p1 { color: var(--bad); border: 1px solid var(--bad); padding: 2px 6px; border-radius: 4px; font-family: var(--mono); font-size: 10px; }
+  .pill-p2 { color: var(--warn); border: 1px solid var(--warn); padding: 2px 6px; border-radius: 4px; font-family: var(--mono); font-size: 10px; }
+
+  /* Architecture diagram */
+  .arch {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 24px;
+    margin-top: 16px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-dim);
+    line-height: 1.7;
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .arch b { color: var(--ink); }
+  .arch .accent { color: var(--accent); }
+  .arch .good { color: var(--good); }
+
+  /* Sequence list */
+  ol.sequence {
+    list-style: none;
+    padding: 0;
+    margin: 16px 0 0;
+    counter-reset: step;
+  }
+  ol.sequence li {
+    counter-increment: step;
+    padding: 14px 18px 14px 56px;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    position: relative;
+    font-size: 13.5px;
+  }
+  ol.sequence li::before {
+    content: counter(step);
+    position: absolute;
+    left: 16px;
+    top: 13px;
+    font-family: var(--mono);
+    font-size: 11px;
+    background: var(--bg-elev);
+    color: var(--ink-soft);
+    padding: 4px 8px;
+    border-radius: 4px;
+    min-width: 28px;
+    text-align: center;
+  }
+  ol.sequence li b { color: var(--ink); }
+  ol.sequence li .lane { color: var(--ink-soft); font-family: var(--mono); font-size: 11px; margin-right: 8px; }
+
+  /* Decisions */
+  .decisions {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+  }
+  @media (max-width: 800px) { .decisions { grid-template-columns: 1fr; } }
+  .decision {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+  .decision h4 {
+    margin: 0 0 8px;
+    font-size: 13px;
+    font-family: var(--mono);
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .decision p { margin: 0; font-size: 13.5px; color: var(--ink-dim); }
+  .decision strong { color: var(--ink); }
+
+  footer {
+    margin-top: 56px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-soft);
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+  }
+
+  code { font-family: var(--mono); font-size: 12.5px; background: var(--code-bg); padding: 1px 6px; border-radius: 4px; color: var(--ink); border: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <span class="eyebrow">Phase 2A · Plan rev 2</span>
+  <h1>Blog — admin pipeline &amp; public reader</h1>
+  <p class="lede">
+    Admins drop HTML into <code>/admin/blog</code>, normalize on save, walk through draft → in_review → published, and the result renders at <code>uscbia.com/blog</code> with the landing page Blog cards now backed by the DB. Cross-repo: <code>bia-admin</code> ships the editor, <code>uscbia.com</code> ships the reader, glued by <code>@biboyang425/bia-shared@0.2.0</code> on GitHub Packages.
+  </p>
+  <div class="meta-row">
+    <span><b>Date</b> 2026-05-24</span>
+    <span><b>Status</b> ready to execute</span>
+    <span><b>Tasks</b> 20 (incl. branch setup)</span>
+    <span><b>Est.</b> 8–12h focused</span>
+    <span><b>Branch</b> feat/phase-2a-blog (both repos)</span>
+  </div>
+</header>
+
+<section>
+  <h2>Decisions locked</h2>
+  <div class="h2-sub">user-approved before plan write</div>
+  <div class="decisions">
+    <div class="decision">
+      <h4>Cover image</h4>
+      <p><strong>Include in 2A.</strong> Supabase Storage bucket <code>article-covers</code>, signed-upload URL, render on cards and detail page.</p>
+    </div>
+    <div class="decision">
+      <h4>Inline images</h4>
+      <p><strong>Stripped.</strong> Sanitize allowlist forbids <code>&lt;img&gt;</code> in body. Cover is the only image. v1 cutdown of design doc.</p>
+    </div>
+    <div class="decision">
+      <h4>Audit log</h4>
+      <p><strong>Included in 2A.</strong> create / update / submit / reject / publish / unpublish / delete all write to <code>admin_audit_log</code> (best-effort).</p>
+    </div>
+    <div class="decision">
+      <h4>Landing refactor</h4>
+      <p><strong>Client-side fetch.</strong> <code>app/page.tsx</code> stays <code>"use client"</code>. <code>&lt;BlogPreview&gt;</code> fetches via anon RLS — no page restructure.</p>
+    </div>
+    <div class="decision">
+      <h4>Status machine</h4>
+      <p><strong>Design doc rev 3 full model.</strong> draft → in_review → published → unpublished (with republish loop).</p>
+    </div>
+    <div class="decision">
+      <h4>Shared pkg publish</h4>
+      <p><strong>Once, at the end.</strong> Admin develops via <code>workspace:*</code> link. Bump to 0.2.0 only after admin smoke passes.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Status machine</h2>
+  <div class="h2-sub">design doc rev 3 §6.5 — full state model</div>
+  <div class="machine">
+    <div class="states">
+      <div class="state s-draft">draft</div>
+      <div class="arrow">submit<br><span class="role">editor+</span> →</div>
+      <div class="state s-in_review">in_review</div>
+      <div class="arrow">publish<br><span class="role">super_admin</span> →</div>
+      <div class="state s-published">published</div>
+      <div class="arrow">unpublish<br><span class="role">super_admin</span> →</div>
+      <div class="state s-unpublished">unpublished</div>
+    </div>
+    <div class="states" style="margin-top: 20px;">
+      <div class="arrow" style="font-size: 10px;">reject (in_review → draft) · <b>super_admin</b></div>
+      <div style="width: 24px;"></div>
+      <div class="arrow" style="font-size: 10px;">republish (unpublished → published) · <b>super_admin</b></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Architecture</h2>
+  <div class="h2-sub">cross-repo glue via published npm package</div>
+  <div class="arch">
+<b>┌─────────────────────────────────────────────────────────────────────┐</b>
+<b>│</b>  <span class="accent">bia-admin</span> (this repo · BIBOYANG425/bia-admin)                       <b>│</b>
+<b>│</b>  • /admin/blog list + editor (split paste/preview + cover upload)   <b>│</b>
+<b>│</b>  • /api/admin/articles + transitions + cover-upload                 <b>│</b>
+<b>│</b>  • requireRole gate · audit log writes                              <b>│</b>
+<b>└──────────────┬──────────────────────────────────────────────────────┘</b>
+               │ imports via <b>workspace:*</b> (local dev)
+               │ imports via <b>^0.2.0</b> (CI / prod)
+               ▼
+<b>┌─────────────────────────────────────────────────────────────────────┐</b>
+<b>│</b>  <span class="accent">@biboyang425/bia-shared</span> (packages/bia-shared)                       <b>│</b>
+<b>│</b>  • Article types · slugify · sanitize · excerpt · ArticleRenderer   <b>│</b>
+<b>│</b>  • Supabase client factories (browser / server / service-role)     <b>│</b>
+<b>│</b>  • Published to <b>GitHub Packages</b> on push-to-main (publish-shared.yml)<b>│</b>
+<b>└──────────────┬──────────────────────────────────────────────────────┘</b>
+               │ <code>npm install @biboyang425/bia-shared@^0.2.0</code>
+               ▼
+<b>┌─────────────────────────────────────────────────────────────────────┐</b>
+<b>│</b>  <span class="good">bia-roommate</span> = uscbia.com                                          <b>│</b>
+<b>│</b>  • /blog list + /blog/[slug] (server components, ArticleRenderer)   <b>│</b>
+<b>│</b>  • landing &lt;BlogPreview/&gt; (client component, anon RLS fetch)       <b>│</b>
+<b>│</b>  • reuses existing <code>createServerSupabaseClient()</code>                  <b>│</b>
+<b>└──────────────┬──────────────────────────────────────────────────────┘</b>
+               │
+               ▼
+<b>┌─────────────────────────────────────────────────────────────────────┐</b>
+<b>│</b>  Supabase (ujkaregrwrppaehvbahf) — shared between both apps         <b>│</b>
+<b>│</b>  • articles · admin_users · admin_audit_log · storage:article-covers<b>│</b>
+<b>│</b>  • RLS: anon reads <code>status='published'</code>; writes via service-role    <b>│</b>
+<b>└─────────────────────────────────────────────────────────────────────┘</b>
+  </div>
+</section>
+
+<section>
+  <h2>Codex fixes (rev 1 → rev 2)</h2>
+  <div class="h2-sub">all P1 + P2 findings addressed</div>
+  <table class="fixes">
+    <thead>
+      <tr><th>Sev</th><th>Finding</th><th>Fix</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="pill-p1">P1</span></td>
+        <td>app/page.tsx is <code>"use client"</code> — can't host async server child</td>
+        <td>Task 18 — client <code>&lt;BlogPreview/&gt;</code> via <code>createBrowserClient</code>; anon RLS already allows the read</td>
+      </tr>
+      <tr>
+        <td><span class="pill-p1">P1</span></td>
+        <td>Proposed Supabase server helper used sync <code>cookies()</code></td>
+        <td>Task 15 — reuse existing <code>createServerSupabaseClient()</code> in bia-roommate (already awaits)</td>
+      </tr>
+      <tr>
+        <td><span class="pill-p1">P1</span></td>
+        <td>Schema deviated from design doc rev 3 — missing fields, wrong status set</td>
+        <td>Task 1 — full <code>draft/in_review/published/unpublished</code> + <code>html_clean</code> + cover + all <code>*_at/_by</code> audit fields + partial unique slug index</td>
+      </tr>
+      <tr>
+        <td><span class="pill-p1">P1</span></td>
+        <td>Dropped cover images (visual downgrade)</td>
+        <td>Tasks 2, 11, 13, 16-18 — Storage bucket + signed-upload + editor input + render</td>
+      </tr>
+      <tr>
+        <td><span class="pill-p2">P2</span></td>
+        <td>Publishing 0.2.0 mid-feature creates coordination risk</td>
+        <td>Task 14 — bump &amp; publish only after admin smoke passes (admin uses <code>workspace:*</code> until then)</td>
+      </tr>
+      <tr>
+        <td><span class="pill-p2">P2</span></td>
+        <td>Admin pages flush against shell (no centralized padding)</td>
+        <td>Task 6 — add <code>p-8</code> to AdminShell <code>&lt;main&gt;</code> once, dedupe from pages</td>
+      </tr>
+      <tr>
+        <td><span class="pill-p2">P2</span></td>
+        <td>No audit log writes</td>
+        <td>Task 7 helper + integrated calls in tasks 8–10</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Task sequence</h2>
+  <div class="h2-sub">20 tasks · TDD throughout · one commit per task</div>
+  <ol class="sequence">
+    <li><span class="lane">[GIT]</span><b>Task 0</b> — Branch <code>feat/phase-2a-blog</code> in both repos. Stash + pop the existing prep changes in bia-roommate.</li>
+    <li><span class="lane">[DB]</span><b>Task 1</b> — Migration: <code>articles</code> table with full design-doc schema. RLS allows anon read of published rows.</li>
+    <li><span class="lane">[DB]</span><b>Task 2</b> — Migration: <code>article-covers</code> storage bucket (public, 5 MB limit, image-only mime allowlist).</li>
+    <li><span class="lane">[SHARED · TDD]</span><b>Task 3</b> — Article types + <code>slugify()</code> + <code>withCollisionSuffix()</code>. 10 tests.</li>
+    <li><span class="lane">[SHARED · TDD]</span><b>Task 4</b> — <code>sanitizeArticleHtml()</code> (DOMPurify allowlist, strip inline imgs) + <code>deriveExcerpt()</code>. ~10 tests.</li>
+    <li><span class="lane">[SHARED]</span><b>Task 5</b> — <code>&lt;ArticleRenderer/&gt;</code> + barrel exports. <b>No version bump yet.</b></li>
+    <li><span class="lane">[ADMIN]</span><b>Task 6</b> — Centralize <code>p-8</code> in <code>AdminShell &lt;main&gt;</code>; dedupe from existing pages.</li>
+    <li><span class="lane">[ADMIN · TDD]</span><b>Task 7</b> — <code>logAdminAction()</code> helper writing to existing <code>admin_audit_log</code> table. Best-effort (never throws).</li>
+    <li><span class="lane">[ADMIN · TDD]</span><b>Task 8</b> — <code>POST /api/admin/articles</code> create draft. Auto-slug, sanitize, audit. Zod validation.</li>
+    <li><span class="lane">[ADMIN · TDD]</span><b>Task 9</b> — <code>GET</code> list + <code>GET/PATCH/DELETE [id]</code>. PATCH locked on published unless super_admin. Slug regen on draft title change.</li>
+    <li><span class="lane">[ADMIN · TDD]</span><b>Task 10</b> — submit / reject / publish / unpublish transitions. Each writes <code>*_at/*_by</code> + audit row.</li>
+    <li><span class="lane">[ADMIN · TDD]</span><b>Task 11</b> — <code>POST /api/admin/articles/cover-upload</code> mints signed-upload URL + returns final public URL.</li>
+    <li><span class="lane">[ADMIN]</span><b>Task 12</b> — <code>/admin/blog</code> list page (server component). Status pills, slug subtitle, language column.</li>
+    <li><span class="lane">[ADMIN]</span><b>Task 13</b> — Editor: split paste/preview, <code>CoverImageInput</code> with direct PUT upload, state-machine action buttons gated by role+status.</li>
+    <li><span class="lane">[ADMIN · SMOKE]</span><b>Task 14</b> — Full local smoke (10 scenarios). Then bump <code>@biboyang425/bia-shared</code> to <b>0.2.0</b>, PR, merge → CI publishes.</li>
+    <li><span class="lane">[PUBLIC]</span><b>Task 15</b> — In bia-roommate: bump dep to <code>^0.2.0</code>, install <code>@tailwindcss/typography</code>, create <code>lib/articles.ts</code> reusing existing server client.</li>
+    <li><span class="lane">[PUBLIC]</span><b>Task 16</b> — <code>/blog</code> list page (server). 60s revalidate. Cover image hero on cards.</li>
+    <li><span class="lane">[PUBLIC]</span><b>Task 17</b> — <code>/blog/[slug]</code> detail (server). ArticleRenderer + cover hero + OG metadata.</li>
+    <li><span class="lane">[PUBLIC]</span><b>Task 18</b> — Landing: client <code>&lt;BlogPreview/&gt;</code> via browser anon supabase. Replaces hardcoded placeholders at <code>app/page.tsx</code> L409–467. Hides cleanly when nothing published.</li>
+    <li><span class="lane">[SHIP]</span><b>Task 19</b> — Push, open PRs, CI green, merge, prod end-to-end smoke (8 scenarios incl. unpublish ⇒ 404 after revalidate).</li>
+  </ol>
+</section>
+
+<section>
+  <h2>Files touched (summary)</h2>
+  <div class="h2-sub">created vs modified · grouped by lane</div>
+  <div class="grid">
+
+    <div class="task">
+      <div class="task-head">
+        <span class="task-id">DB</span>
+        <h3>2 migrations + storage bucket</h3>
+        <div class="badges"><span class="badge b-db">db</span></div>
+      </div>
+      <div class="task-body">Articles table with full design-doc schema; partial unique slug index; public read RLS for status='published'; storage bucket for cover images.</div>
+      <div class="files">
+        <div>+ supabase/migrations/20260524000001_create_articles.sql</div>
+        <div>+ supabase/migrations/20260524000002_storage_article_covers.sql</div>
+      </div>
+    </div>
+
+    <div class="task">
+      <div class="task-head">
+        <span class="task-id">SHARED</span>
+        <h3>Articles toolkit @ 0.2.0</h3>
+        <div class="badges"><span class="badge b-shared">shared</span><span class="badge b-tdd">tdd</span></div>
+      </div>
+      <div class="task-body">Types, slugify, sanitize, excerpt, ArticleRenderer. Vitest config + jsdom env. Bump 0.1.0 → 0.2.0 only after admin smoke.</div>
+      <div class="files">
+        <div>± packages/bia-shared/src/types.ts</div>
+        <div>+ packages/bia-shared/src/articles/{slug,sanitize,excerpt,ArticleRenderer,index}.{ts,tsx,test.ts}</div>
+        <div>± packages/bia-shared/package.json (deps + version)</div>
+        <div>+ packages/bia-shared/vitest.config.ts</div>
+      </div>
+    </div>
+
+    <div class="task">
+      <div class="task-head">
+        <span class="task-id">ADMIN-API</span>
+        <h3>Articles REST + transitions + cover upload</h3>
+        <div class="badges"><span class="badge b-admin">admin</span><span class="badge b-tdd">tdd</span></div>
+      </div>
+      <div class="task-body">7 endpoints, all role-gated and audited. Submit/reject for super_admin moderation. Publish handles both in_review → and unpublished → republish.</div>
+      <div class="files">
+        <div>+ bia-admin/app/api/admin/articles/route.ts (POST + GET)</div>
+        <div>+ bia-admin/app/api/admin/articles/[id]/route.ts (GET / PATCH / DELETE)</div>
+        <div>+ bia-admin/app/api/admin/articles/[id]/{submit,reject,publish,unpublish}/route.ts</div>
+        <div>+ bia-admin/app/api/admin/articles/cover-upload/route.ts</div>
+        <div>+ bia-admin/lib/audit/log.ts</div>
+      </div>
+    </div>
+
+    <div class="task">
+      <div class="task-head">
+        <span class="task-id">ADMIN-UI</span>
+        <h3>List + editor pages</h3>
+        <div class="badges"><span class="badge b-admin">admin</span></div>
+      </div>
+      <div class="task-body">List page with status pills; editor with split paste/preview, CoverImageInput component (signed URL → direct PUT to Supabase Storage), and contextual buttons (Submit/Publish/Reject/Unpublish/Republish/Delete) based on status × role.</div>
+      <div class="files">
+        <div>+ bia-admin/app/(admin)/admin/blog/{page,new/page,[id]/page}.tsx</div>
+        <div>+ bia-admin/components/blog/{BlogEditor,CoverImageInput}.tsx</div>
+        <div>± bia-admin/lib/admin/sections.ts (Blog enabled=true)</div>
+        <div>± bia-admin/components/AdminShell.tsx (p-8 on main)</div>
+      </div>
+    </div>
+
+    <div class="task">
+      <div class="task-head">
+        <span class="task-id">PUBLIC-SERVER</span>
+        <h3>/blog list + detail</h3>
+        <div class="badges"><span class="badge b-public">uscbia</span></div>
+      </div>
+      <div class="task-body">Server components. ISR with 60s revalidate. Cover hero on detail; OG metadata. Reuses existing <code>createServerSupabaseClient()</code>.</div>
+      <div class="files">
+        <div>+ bia-roommate/lib/articles.ts</div>
+        <div>+ bia-roommate/app/blog/{page,[slug]/page}.tsx</div>
+        <div>± bia-roommate/app/globals.css (@plugin typography)</div>
+        <div>± bia-roommate/package.json (^0.2.0 + typography)</div>
+      </div>
+    </div>
+
+    <div class="task">
+      <div class="task-head">
+        <span class="task-id">PUBLIC-CLIENT</span>
+        <h3>Landing &lt;BlogPreview/&gt;</h3>
+        <div class="badges"><span class="badge b-public">uscbia</span></div>
+      </div>
+      <div class="task-body">Client component (browser supabase via anon). Replaces hardcoded placeholders at lines 409–467. Hides when no published articles. Preserves tilted-card aesthetic with cover image fallback to gradient title block.</div>
+      <div class="files">
+        <div>+ bia-roommate/components/BlogPreview.tsx</div>
+        <div>± bia-roommate/app/page.tsx (60-line section → 6-line component)</div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section>
+  <h2>Verification (Task 19 — prod end-to-end)</h2>
+  <div class="h2-sub">8 scenarios after both PRs merge</div>
+  <ol class="sequence">
+    <li>Sign in to <code>bia-admin.vercel.app/admin</code> as super_admin</li>
+    <li>Create "Hello World v1" with sample HTML + cover image (real Supabase Storage upload)</li>
+    <li>Submit → Publish</li>
+    <li><code>uscbia.com/blog</code> shows the article with cover</li>
+    <li><code>uscbia.com/blog/hello-world-v1</code> renders body via ArticleRenderer + cover hero</li>
+    <li><code>uscbia.com</code> landing's Blog section shows the article (DB-driven, not placeholder)</li>
+    <li>Unpublish → confirm <code>/blog/hello-world-v1</code> returns 404 after 60s revalidate</li>
+    <li><code>admin_audit_log</code> shows full trail: create / publish / unpublish</li>
+  </ol>
+</section>
+
+<section>
+  <h2>Out of scope (deferred)</h2>
+  <div class="h2-sub">to be addressed in 2A.5 or later phases</div>
+  <div class="grid">
+    <div class="task">
+      <div class="task-head"><h3>Multilingual linking</h3><div class="badges"><span class="badge b-tdd">Phase 2B+</span></div></div>
+      <div class="task-body">Each language is a separate article per design doc. No cross-language link in v1.</div>
+    </div>
+    <div class="task">
+      <div class="task-head"><h3>Scheduled publish</h3><div class="badges"><span class="badge b-tdd">Phase 2A.5</span></div></div>
+      <div class="task-body">Publish-at-future-timestamp. Not load-bearing for v1.</div>
+    </div>
+    <div class="task">
+      <div class="task-head"><h3>Draft preview link</h3><div class="badges"><span class="badge b-tdd">Phase 2A.5</span></div></div>
+      <div class="task-body">Shareable preview URL for non-admins to review drafts.</div>
+    </div>
+    <div class="task">
+      <div class="task-head"><h3>.zip upload pipeline</h3><div class="badges"><span class="badge b-tdd">Later</span></div></div>
+      <div class="task-body">Design doc §6.3 mentions zip drop. v1 ships paste-only — the wedge.</div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <span>docs/superpowers/plans/2026-05-24-phase-2a-blog.md (rev 2)</span>
+  <span>20 tasks · TDD · Codex P1+P2 cleared</span>
+</footer>
+
+</div>
+</body>
+</html>

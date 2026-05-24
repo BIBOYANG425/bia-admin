@@ -1,13 +1,17 @@
 {
   "name": "@biboyang425/bia-shared",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
   "description": "Types + Supabase client factories shared between bia-admin and uscbia.com",
   "license": "UNLICENSED",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run"
+  },
   "exports": {
     ".": "./src/index.ts",
+    "./articles": "./src/articles/index.ts",
     "./types": "./src/types.ts",
     "./supabase/browser": "./src/supabase/browser.ts",
     "./supabase/service-role": "./src/supabase/service-role.ts",
@@ -28,13 +32,19 @@
   ],
   "dependencies": {
     "@supabase/ssr": "^0.5.0",
-    "@supabase/supabase-js": "^2.45.0"
+    "@supabase/supabase-js": "^2.45.0",
+    "isomorphic-dompurify": "^2.26.0",
+    "jsdom": "^25.0.1"
   },
   "peerDependencies": {
-    "next": "^16.0.0"
+    "next": "^16.0.0",
+    "react": "^19.0.0"
   },
   "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@types/node": "^20.0.0",
+    "@types/react": "^19.0.0",
     "typescript": "^5.4.0",
-    "@types/node": "^20.0.0"
+    "vitest": "^2.1.0"
   }
 }
