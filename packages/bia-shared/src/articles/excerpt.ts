@@ -18,12 +18,11 @@ export function createArticleExcerpt(
   html: string,
   { maxLength = 200 }: ExcerptOptions = {},
 ): string {
-  const text = decodeEntities(
-    sanitizeArticleHtml(html)
-      .replace(/<[^>]*>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim(),
-  );
+  // Decode entities BEFORE collapsing whitespace so &nbsp; (→  ) gets
+  // folded along with other whitespace runs.
+  const text = decodeEntities(sanitizeArticleHtml(html).replace(/<[^>]*>/g, " "))
+    .replace(/\s+/g, " ")
+    .trim();
 
   if (!text) return "";
   if (text.length <= maxLength) return text;

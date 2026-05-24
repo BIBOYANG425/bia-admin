@@ -21,11 +21,16 @@ vi.mock("@/lib/auth/require-role", () => ({
     try {
       return await handler(await requireRoleMock());
     } catch (error: any) {
-      const { NextResponse } = await import("next/server");
-      return NextResponse.json(
-        { error: error.code ?? "unknown" },
-        { status: error.status ?? 500 },
-      );
+      // Only convert auth-shaped errors (RoleError) to JSON responses.
+      // Anything else should surface as a thrown error so tests catch bugs.
+      if (typeof error?.status === "number" && typeof error?.code === "string") {
+        const { NextResponse } = await import("next/server");
+        return NextResponse.json(
+          { error: error.code },
+          { status: error.status },
+        );
+      }
+      throw error;
     }
   },
   RoleError: class RoleError extends Error {

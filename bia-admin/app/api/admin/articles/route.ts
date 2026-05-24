@@ -36,12 +36,18 @@ async function availableSlug(base: string): Promise<
   const admin = createBiaServiceRoleClient();
   const { data, error } = await admin
     .from("articles")
-    .select("slug")
+    .select("slug, status")
     .in("slug", slugCandidates(base));
 
   if (error) return { slug: null, error };
 
-  const taken = new Set((data ?? []).map((row: { slug: string }) => row.slug));
+  // Only non-draft slugs are unique-constrained. Drafts can share slugs,
+  // so they don't count as collisions when creating a new draft.
+  const taken = new Set(
+    (data ?? [])
+      .filter((row: { status: string }) => row.status !== "draft")
+      .map((row: { slug: string }) => row.slug),
+  );
   return { slug: withCollisionSuffix(base, taken), error: null };
 }
 

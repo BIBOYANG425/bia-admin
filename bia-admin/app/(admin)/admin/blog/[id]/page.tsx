@@ -9,6 +9,17 @@ import { requireRole } from "@/lib/auth/require-role";
 
 export const dynamic = "force-dynamic";
 
+// Same formatter as the blog list page so date display stays consistent.
+function formatUpdatedAt(value: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 type ArticleStatus = "draft" | "in_review" | "published" | "unpublished";
 type ArticleLanguage = "en" | "zh";
 
@@ -68,7 +79,7 @@ export default async function EditArticlePage({
           </div>
           {article.updated_at && (
             <p className="text-xs text-muted-foreground">
-              Updated {new Date(article.updated_at).toLocaleString()}
+              Updated {formatUpdatedAt(article.updated_at)}
             </p>
           )}
         </div>

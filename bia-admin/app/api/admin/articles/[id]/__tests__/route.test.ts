@@ -31,11 +31,16 @@ vi.mock("@/lib/auth/require-role", () => ({
     try {
       return await handler(await requireRoleMock());
     } catch (error: any) {
-      const { NextResponse } = await import("next/server");
-      return NextResponse.json(
-        { error: error.code ?? "unknown" },
-        { status: error.status ?? 500 },
-      );
+      // Only convert auth-shaped errors (RoleError) to JSON responses.
+      // Anything else should surface as a thrown error so tests catch bugs.
+      if (typeof error?.status === "number" && typeof error?.code === "string") {
+        const { NextResponse } = await import("next/server");
+        return NextResponse.json(
+          { error: error.code },
+          { status: error.status },
+        );
+      }
+      throw error;
     }
   },
   RoleError: class RoleError extends Error {
@@ -247,6 +252,10 @@ describe("/api/admin/articles/[id]", () => {
 
   it("DELETE removes article and audits for super_admin", async () => {
     requireRoleMock.mockResolvedValue(superAdmin);
+    maybeSingleMock.mockResolvedValue({
+      data: { id: "article-1" },
+      error: null,
+    });
     deleteMock.mockReturnValue({
       eq: () => Promise.resolve({ error: null }),
     });
@@ -268,5 +277,22 @@ describe("/api/admin/articles/[id]", () => {
         entity_id: "article-1",
       }),
     );
+  });
+
+  it("DELETE returns 404 when article does not exist and skips audit", async () => {
+    requireRoleMock.mockResolvedValue(superAdmin);
+    maybeSingleMock.mockResolvedValue({ data: null, error: null });
+
+    const res = await DELETE(
+      new Request("http://localhost/api/admin/articles/missing-id", {
+        method: "DELETE",
+      }),
+      ctxFor("missing-id"),
+    );
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+    expect(deleteMock).not.toHaveBeenCalled();
+    expect(auditMock).not.toHaveBeenCalled();
   });
 });

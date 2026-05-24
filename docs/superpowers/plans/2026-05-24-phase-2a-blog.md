@@ -27,7 +27,7 @@
 | Landing wiring | `bia-roommate/app/page.tsx` | Imports + uses `<BlogPreview>` at line 411 ✓ |
 | Landing card | `bia-roommate/components/BlogPreview.tsx` | Client component, uses `createBrowserSupabaseClient`, tilted-card layout, gradient fallback when no cover ✓ |
 | bia-roommate dep | `bia-roommate/package.json` | `@biboyang425/bia-shared: ^0.2.0`, `@tailwindcss/typography` ✓ |
-| Admin audit helper | `bia-admin/lib/admin/audit-log.ts` | `writeAudit({admin_email, action, entity_type, entity_id, payload})` exists, **but `entity_type` union is `"admin_user" | "admin_invitation"` only — needs widening to include `"article"`** |
+| Admin audit helper | `bia-admin/lib/admin/audit-log.ts` | `writeAudit({admin_email, action, entity_type, entity_id, payload})` exists. `entity_type` union widened to `` `"admin_user" \| "admin_invitation" \| "article"` `` ✓ |
 
 ---
 

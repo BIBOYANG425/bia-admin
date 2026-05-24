@@ -27,7 +27,10 @@ const ALLOWED_TAGS = [
   "ul",
 ];
 
-const ALLOWED_ATTR = ["colspan", "dir", "href", "lang", "rowspan", "target", "title"];
+// Note: "target" intentionally omitted. Allowing target="_blank" without
+// rel="noopener noreferrer" enables tabnabbing. We drop the attr entirely
+// rather than post-process every link — pasted articles rarely need _blank.
+const ALLOWED_ATTR = ["colspan", "dir", "href", "lang", "rowspan", "title"];
 
 export function sanitizeArticleHtml(input: string): string {
   if (!input) return "";

@@ -161,6 +161,23 @@ export async function DELETE(_request: Request, ctx: RouteContext) {
   return withRole("super_admin", async (auth) => {
     const { id } = await ctx.params;
     const admin = createBiaServiceRoleClient();
+
+    const { data: existing, error: lookupError } = await admin
+      .from("articles")
+      .select("id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (lookupError) {
+      return NextResponse.json(
+        { error: "lookup_failed", details: lookupError.message },
+        { status: 500 },
+      );
+    }
+    if (!existing) {
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
+
     const { error } = await admin.from("articles").delete().eq("id", id);
 
     if (error) {
