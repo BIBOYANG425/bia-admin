@@ -66,6 +66,11 @@ export async function POST(_request: Request, ctx: RouteContext) {
         status: "in_review",
         submitted_at: new Date().toISOString(),
         submitted_by: auth.adminUser.id,
+        // Clear any prior rejection — once the article moves forward the note
+        // no longer applies. Audit log retains the history.
+        rejected_at: null,
+        rejected_by: null,
+        rejection_reason: null,
       })
       .eq("id", id)
       .select()

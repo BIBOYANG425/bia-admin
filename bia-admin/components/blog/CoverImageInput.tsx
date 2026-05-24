@@ -1,11 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ImagePlus, Loader2, X } from "lucide-react";
+import { ImagePlus, Loader2, UploadCloud, X } from "lucide-react";
 import { createBiaBrowserClient } from "@biboyang425/bia-shared/supabase/browser";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 
@@ -41,6 +40,7 @@ export function CoverImageInput({
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   async function uploadCover(file: File) {
     if (!ALLOWED_MIME_TYPES.includes(file.type)) {
@@ -100,55 +100,149 @@ export function CoverImageInput({
     void uploadCover(file);
   }
 
+  function handleDragEnter(event: React.DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    if (disabled || uploading) return;
+    setIsDragOver(true);
+  }
+
+  function handleDragOver(event: React.DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    if (disabled || uploading) return;
+    // Tell the OS this is a "copy" operation; otherwise the cursor shows a stop icon.
+    event.dataTransfer.dropEffect = "copy";
+  }
+
+  function handleDragLeave(event: React.DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setIsDragOver(false);
+  }
+
+  function handleDrop(event: React.DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setIsDragOver(false);
+    if (disabled || uploading) return;
+    const file = event.dataTransfer.files?.[0];
+    if (!file) return;
+    void uploadCover(file);
+  }
+
+  function openFilePicker() {
+    if (disabled || uploading) return;
+    inputRef.current?.click();
+  }
+
+  const interactive = !(disabled || uploading);
+
   return (
     <div className="space-y-2">
       <Label htmlFor="cover-image">Cover image</Label>
-      <div className="grid gap-3 rounded-lg border bg-white p-3 sm:grid-cols-[160px_1fr]">
-        <div className="flex h-24 items-center justify-center overflow-hidden rounded-md border bg-zinc-50">
-          {value ? (
+
+      <label
+        htmlFor="cover-image"
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className={[
+          "relative block overflow-hidden rounded-lg border-2 border-dashed transition-colors",
+          interactive ? "cursor-pointer" : "cursor-not-allowed opacity-70",
+          isDragOver
+            ? "border-emerald-400 bg-emerald-50"
+            : value
+              ? "border-zinc-200 bg-white"
+              : "border-zinc-300 bg-zinc-50 hover:border-zinc-400 hover:bg-zinc-100",
+        ].join(" ")}
+      >
+        <input
+          ref={inputRef}
+          id="cover-image"
+          type="file"
+          accept={ALLOWED_MIME_TYPES.join(",")}
+          onChange={handleFileChange}
+          disabled={disabled || uploading}
+          className="sr-only"
+        />
+
+        {value ? (
+          <div className="relative">
             <img
               src={value}
               alt="Article cover preview"
-              className="h-full w-full object-cover"
+              className="aspect-[16/9] w-full object-cover"
             />
-          ) : (
-            <ImagePlus className="h-6 w-6 text-muted-foreground" />
-          )}
-        </div>
-        <div className="flex min-w-0 flex-col justify-center gap-2">
-          <Input
-            ref={inputRef}
-            id="cover-image"
-            type="file"
-            accept={ALLOWED_MIME_TYPES.join(",")}
-            onChange={handleFileChange}
-            disabled={disabled || uploading}
-          />
-          <div className="flex items-center gap-2">
-            {uploading && (
-              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                Uploading
-              </span>
-            )}
-            {value && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => onChange(null)}
-                disabled={disabled || uploading}
-              >
-                <X className="h-3.5 w-3.5" />
-                Remove
-              </Button>
-            )}
+            <div className="flex items-center justify-between gap-3 border-t bg-white/95 px-3 py-2 text-xs">
+              <p className="truncate text-muted-foreground">{value}</p>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    openFilePicker();
+                  }}
+                  disabled={!interactive}
+                >
+                  <ImagePlus className="h-3.5 w-3.5" />
+                  Replace
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onChange(null);
+                  }}
+                  disabled={!interactive}
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Remove
+                </Button>
+              </div>
+            </div>
           </div>
-          {value && (
-            <p className="truncate text-xs text-muted-foreground">{value}</p>
-          )}
-        </div>
-      </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
+            <div
+              className={[
+                "flex h-12 w-12 items-center justify-center rounded-full",
+                isDragOver
+                  ? "bg-emerald-100 text-emerald-700"
+                  : "bg-zinc-100 text-zinc-500",
+              ].join(" ")}
+            >
+              {uploading ? (
+                <Loader2 className="h-6 w-6 animate-spin" />
+              ) : (
+                <UploadCloud className="h-6 w-6" />
+              )}
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-zinc-900">
+                {uploading
+                  ? "Uploading…"
+                  : isDragOver
+                    ? "Drop to upload"
+                    : "Drag an image here, or click to browse"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                JPG, PNG, WEBP, or GIF · up to 5 MB
+              </p>
+            </div>
+          </div>
+        )}
+
+        {uploading && value && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm">
+            <div className="flex items-center gap-2 rounded-md bg-white px-3 py-2 text-sm shadow-md">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Uploading…
+            </div>
+          </div>
+        )}
+      </label>
     </div>
   );
 }

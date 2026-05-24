@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
   Code2,
   Eye,
+  FileUp,
   Loader2,
   RotateCcw,
   Save,
@@ -14,6 +15,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { roleAtLeast, type Role } from "@biboyang425/bia-shared";
+import { ArticleRenderer } from "@biboyang425/bia-shared/articles";
 import { toast } from "sonner";
 
 import {
@@ -38,6 +40,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CoverImageInput } from "./CoverImageInput";
+import { MissingImagesPanel } from "./MissingImagesPanel";
 
 type ArticleStatus = "draft" | "in_review" | "published" | "unpublished";
 type ArticleLanguage = "en" | "zh";
@@ -52,6 +55,8 @@ interface ArticleInitial {
   tags: string[];
   cover_image_url: string | null;
   updated_at?: string;
+  rejected_at?: string | null;
+  rejection_reason?: string | null;
 }
 
 interface ApiResponse {
@@ -75,18 +80,6 @@ const STATUS_STYLES: Record<ArticleStatus, string> = {
   unpublished: "border-slate-200 bg-slate-100 text-slate-700",
 };
 
-const BLOCKED_PREVIEW_TAGS = [
-  "script",
-  "style",
-  "iframe",
-  "object",
-  "embed",
-  "img",
-  "svg",
-  "link",
-  "meta",
-];
-
 function parseTags(value: string): string[] {
   return value
     .split(",")
@@ -95,39 +88,48 @@ function parseTags(value: string): string[] {
     .slice(0, 20);
 }
 
-function isSafeUrl(value: string): boolean {
-  const trimmed = value.trim();
-  return (
-    trimmed.startsWith("#") ||
-    trimmed.startsWith("/") ||
-    /^https?:\/\//i.test(trimmed) ||
-    /^mailto:/i.test(trimmed) ||
-    /^tel:/i.test(trimmed)
-  );
+// Heuristic: if more than 20% of letters in the visible text are CJK
+// Unified Ideographs, classify as Chinese. Title characters count too,
+// so dropped Chinese articles flip the language automatically.
+function detectLanguage(text: string): "en" | "zh" {
+  let cjk = 0;
+  let letters = 0;
+  for (const ch of text) {
+    const code = ch.codePointAt(0);
+    if (code === undefined) continue;
+    if (code >= 0x4e00 && code <= 0x9fff) {
+      cjk += 1;
+      letters += 1;
+    } else if (/\p{L}/u.test(ch)) {
+      letters += 1;
+    }
+  }
+  if (letters === 0) return "en";
+  return cjk / letters > 0.2 ? "zh" : "en";
 }
 
-function sanitizePreviewHtml(source: string): string {
-  if (!source.trim()) return "";
+// Pull a sensible title from dropped HTML: prefer the <title>, then the
+// first <h1>, then the first <h2>. Returns null if none look usable.
+function extractTitleFromHtml(html: string): string | null {
+  if (typeof DOMParser === "undefined") return null;
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const candidates = [
+    doc.querySelector("title")?.textContent,
+    doc.querySelector("h1")?.textContent,
+    doc.querySelector("h2")?.textContent,
+  ];
+  for (const raw of candidates) {
+    const trimmed = raw?.trim();
+    if (trimmed) return trimmed.slice(0, 200);
+  }
+  return null;
+}
 
-  const doc = new DOMParser().parseFromString(source, "text/html");
-  doc
-    .querySelectorAll(BLOCKED_PREVIEW_TAGS.join(","))
-    .forEach((node) => node.remove());
-
-  doc.body.querySelectorAll("*").forEach((element) => {
-    Array.from(element.attributes).forEach((attribute) => {
-      const name = attribute.name.toLowerCase();
-      if (name.startsWith("on") || name === "style" || name === "srcdoc") {
-        element.removeAttribute(attribute.name);
-        return;
-      }
-      if ((name === "href" || name === "src") && !isSafeUrl(attribute.value)) {
-        element.removeAttribute(attribute.name);
-      }
-    });
-  });
-
-  return doc.body.innerHTML;
+// Strip tags client-side so we can sample text for language detection.
+function htmlToPlainText(html: string): string {
+  if (typeof DOMParser === "undefined") return html;
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  return doc.body.textContent ?? "";
 }
 
 function getErrorMessage(payload: ApiResponse, fallback: string): string {
@@ -164,6 +166,9 @@ export function BlogEditor({
   );
   const [html, setHtml] = useState(initial?.html_clean ?? "");
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [htmlDragOver, setHtmlDragOver] = useState(false);
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
 
   const id = initial?.id;
   const status = initial?.status ?? "draft";
@@ -177,11 +182,6 @@ export function BlogEditor({
   );
   const canUnpublish = Boolean(id && status === "published" && canSupervise);
   const canDelete = Boolean(id && canSupervise && status !== "published");
-  const [previewHtml, setPreviewHtml] = useState("");
-
-  useEffect(() => {
-    setPreviewHtml(sanitizePreviewHtml(html));
-  }, [html]);
 
   async function saveDraft() {
     if (!canSave) return;
@@ -227,14 +227,21 @@ export function BlogEditor({
     }
   }
 
-  async function runTransition(endpoint: string, successMessage: string) {
+  async function runTransition(
+    endpoint: string,
+    successMessage: string,
+    body?: Record<string, unknown>,
+  ) {
     if (!id) return;
 
     setPendingAction(endpoint);
     try {
-      const res = await fetch(`/api/admin/articles/${id}/${endpoint}`, {
-        method: "POST",
-      });
+      const init: RequestInit = { method: "POST" };
+      if (body) {
+        init.headers = { "content-type": "application/json" };
+        init.body = JSON.stringify(body);
+      }
+      const res = await fetch(`/api/admin/articles/${id}/${endpoint}`, init);
       const payload = (await res.json().catch(() => ({}))) as ApiResponse;
 
       if (!res.ok) {
@@ -248,6 +255,82 @@ export function BlogEditor({
     } finally {
       setPendingAction(null);
     }
+  }
+
+  // Files dropped on the source pane: read as text and replace the editor body.
+  // The sanitize pipeline strips dangerous content on save, so any text-shaped
+  // file (HTML, plain text, markdown) is safe to accept here.
+  const HTML_DROP_MAX_BYTES = 500_000; // 500 KB
+  async function ingestHtmlFile(file: File) {
+    if (file.size > HTML_DROP_MAX_BYTES) {
+      toast.error("File too large (max 500 KB).");
+      return;
+    }
+    try {
+      const text = await file.text();
+      if (!text.trim()) {
+        toast.error(`${file.name} is empty.`);
+        return;
+      }
+      setHtml(text);
+
+      // Auto-fill metadata where it's still empty. Never overwrite something
+      // the user already typed.
+      const extras: string[] = [];
+      if (!title.trim()) {
+        const detected = extractTitleFromHtml(text);
+        if (detected) {
+          setTitle(detected);
+          extras.push(`title "${detected}"`);
+        }
+      }
+      // Always re-detect language from content (cheap, and the user can flip
+      // back via the dropdown if they disagree).
+      const plain = htmlToPlainText(text);
+      const sample = `${title} ${plain}`.slice(0, 4000);
+      const lang = detectLanguage(sample);
+      if (lang !== language) {
+        setLanguage(lang);
+        extras.push(`language ${lang === "zh" ? "中文" : "English"}`);
+      }
+
+      const tail = extras.length ? ` · ${extras.join(", ")}` : "";
+      toast.success(`Loaded ${file.name}${tail}`);
+    } catch {
+      toast.error("Could not read file.");
+    }
+  }
+
+  function isFileDrag(event: React.DragEvent) {
+    return Array.from(event.dataTransfer.types).includes("Files");
+  }
+
+  function handleHtmlDragEnter(event: React.DragEvent<HTMLDivElement>) {
+    if (!isFileDrag(event) || !canSave || busy) return;
+    event.preventDefault();
+    setHtmlDragOver(true);
+  }
+
+  function handleHtmlDragOver(event: React.DragEvent<HTMLDivElement>) {
+    if (!isFileDrag(event) || !canSave || busy) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  }
+
+  function handleHtmlDragLeave(event: React.DragEvent<HTMLDivElement>) {
+    // Only clear state when leaving the wrapper, not nested children.
+    if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+    setHtmlDragOver(false);
+  }
+
+  function handleHtmlDrop(event: React.DragEvent<HTMLDivElement>) {
+    if (!isFileDrag(event)) return;
+    event.preventDefault();
+    setHtmlDragOver(false);
+    if (!canSave || busy) return;
+    const file = event.dataTransfer.files?.[0];
+    if (!file) return;
+    void ingestHtmlFile(file);
   }
 
   async function deleteArticle() {
@@ -341,20 +424,78 @@ export function BlogEditor({
         </div>
       </div>
 
+      {initial?.rejected_at && status === "draft" && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 shadow-sm">
+          <div className="flex items-start gap-2">
+            <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-700" />
+            <div className="text-sm text-rose-900">
+              <p className="font-medium">
+                Sent back to draft
+                <span className="ml-2 text-xs font-normal text-rose-700">
+                  {new Date(initial.rejected_at).toLocaleString()}
+                </span>
+              </p>
+              {initial.rejection_reason ? (
+                <p className="mt-1 whitespace-pre-wrap text-sm text-rose-800">
+                  {initial.rejection_reason}
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-rose-700">
+                  No note was left.
+                </p>
+              )}
+              <p className="mt-2 text-xs text-rose-700">
+                This note clears when you resubmit for review.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <MissingImagesPanel
+        html={html}
+        onChange={setHtml}
+        disabled={!canSave || busy}
+      />
+
       <div className="grid gap-4 xl:grid-cols-2">
         <section className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Code2 className="h-4 w-4 text-muted-foreground" />
-            <Label htmlFor="article-html">Source HTML</Label>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Code2 className="h-4 w-4 text-muted-foreground" />
+              <Label htmlFor="article-html">Source HTML</Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Paste or drop an .html file
+            </p>
           </div>
-          <textarea
-            id="article-html"
-            value={html}
-            onChange={(event) => setHtml(event.target.value)}
-            placeholder="Paste article HTML here."
-            disabled={!canSave || busy}
-            className="min-h-[420px] w-full resize-y rounded-lg border bg-white p-3 font-mono text-sm leading-6 shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-1 focus:ring-ring xl:h-[58vh] xl:min-h-[560px]"
-          />
+          <div
+            onDragEnter={handleHtmlDragEnter}
+            onDragOver={handleHtmlDragOver}
+            onDragLeave={handleHtmlDragLeave}
+            onDrop={handleHtmlDrop}
+            className="relative"
+          >
+            <textarea
+              id="article-html"
+              value={html}
+              onChange={(event) => setHtml(event.target.value)}
+              placeholder="Paste article HTML here, or drop a file."
+              disabled={!canSave || busy}
+              className="min-h-[420px] w-full resize-y rounded-lg border bg-white p-3 font-mono text-sm leading-6 shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-1 focus:ring-ring xl:h-[58vh] xl:min-h-[560px]"
+            />
+            {htmlDragOver && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg border-2 border-dashed border-emerald-400 bg-emerald-50/90 backdrop-blur-[1px]">
+                <div className="flex flex-col items-center gap-2 text-emerald-800">
+                  <FileUp className="h-7 w-7" />
+                  <p className="text-sm font-medium">Drop to load file</p>
+                  <p className="text-xs text-emerald-700">
+                    HTML, text, or markdown — up to 500 KB
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
         </section>
 
         <section className="space-y-2">
@@ -362,14 +503,15 @@ export function BlogEditor({
             <Eye className="h-4 w-4 text-muted-foreground" />
             <Label>Preview</Label>
           </div>
-          {previewHtml ? (
-            <div
-              className="min-h-[420px] overflow-auto rounded-lg border bg-white p-5 text-sm leading-7 text-zinc-800 shadow-sm xl:h-[58vh] xl:min-h-[560px] [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:pl-4 [&_blockquote]:text-muted-foreground [&_h1]:mb-4 [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:mb-3 [&_h2]:mt-6 [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:mb-2 [&_h3]:mt-5 [&_h3]:text-lg [&_h3]:font-semibold [&_li]:ml-5 [&_li]:list-disc [&_ol_li]:list-decimal [&_p]:mb-4 [&_strong]:font-semibold [&_ul]:mb-4"
-              dangerouslySetInnerHTML={{ __html: previewHtml }}
-            />
+          {html.trim() ? (
+            <div className="overflow-auto rounded-lg border bg-white shadow-sm xl:h-[58vh] xl:min-h-[560px]">
+              {/* Same iframe renderer the public /blog/[slug] page uses — */}
+              {/* what you see here matches what readers will see after publish. */}
+              <ArticleRenderer html={html} className="w-full border-0 bg-white" />
+            </div>
           ) : (
-            <div className="min-h-[420px] overflow-auto rounded-lg border bg-white p-5 text-sm leading-7 text-zinc-800 shadow-sm xl:h-[58vh] xl:min-h-[560px]">
-              <p className="text-muted-foreground">Preview appears here.</p>
+            <div className="min-h-[420px] overflow-auto rounded-lg border bg-white p-6 shadow-sm xl:h-[58vh] xl:min-h-[560px]">
+              <p className="text-sm text-muted-foreground">Preview appears here.</p>
             </div>
           )}
         </section>
@@ -415,15 +557,50 @@ export function BlogEditor({
           )}
 
           {canReject && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void runTransition("reject", "Article rejected")}
-              disabled={busy}
-            >
-              <XCircle className="h-4 w-4" />
-              Reject
-            </Button>
+            <AlertDialog open={rejectOpen} onOpenChange={setRejectOpen}>
+              <AlertDialogTrigger asChild>
+                <Button type="button" variant="outline" disabled={busy}>
+                  <XCircle className="h-4 w-4" />
+                  Reject
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Reject this article?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This sends the article back to draft. Leave a note so the
+                    author knows what needs to change. The note is recorded in
+                    the audit log.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <textarea
+                  value={rejectReason}
+                  onChange={(event) => setRejectReason(event.target.value)}
+                  placeholder="What needs to change before this can publish?"
+                  rows={4}
+                  disabled={busy}
+                  className="w-full resize-y rounded-md border bg-background p-3 text-sm leading-6 outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-1 focus:ring-ring"
+                />
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => {
+                      const reason = rejectReason.trim();
+                      void runTransition(
+                        "reject",
+                        "Article rejected",
+                        reason ? { reason } : undefined,
+                      );
+                      setRejectReason("");
+                      setRejectOpen(false);
+                    }}
+                    disabled={busy}
+                  >
+                    Send rejection
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           )}
 
           {canUnpublish && (

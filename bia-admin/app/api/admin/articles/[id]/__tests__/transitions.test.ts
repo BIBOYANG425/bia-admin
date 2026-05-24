@@ -195,11 +195,15 @@ describe("article transitions", () => {
     const res = await reject(request({ reason: "Needs polish" }), ctx());
 
     expect(res.status).toBe(200);
-    expect(updateMock).toHaveBeenCalledWith({
-      status: "draft",
-      submitted_at: null,
-      submitted_by: null,
-    });
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "draft",
+        submitted_at: null,
+        submitted_by: null,
+        rejected_by: "u1",
+        rejection_reason: "Needs polish",
+      }),
+    );
     expect(auditMock).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "article.reject",

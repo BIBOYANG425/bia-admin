@@ -41,6 +41,12 @@ export async function POST(request: Request, ctx: RouteContext) {
         status: "draft",
         submitted_at: null,
         submitted_by: null,
+        // Record the rejection so the editor banner can show the author what
+        // changed. Cleared by the submit handler when the article moves
+        // forward again.
+        rejected_at: new Date().toISOString(),
+        rejected_by: auth.adminUser.id,
+        rejection_reason: reason ?? null,
       })
       .eq("id", id)
       .select()

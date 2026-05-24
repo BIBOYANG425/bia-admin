@@ -62,6 +62,9 @@ vi.mock("@biboyang425/bia-shared/articles", () => ({
   slugify: slugifyMock,
   withCollisionSuffix: withCollisionSuffixMock,
   deriveExcerpt: deriveExcerptMock,
+  // Pass-through for the post-sanitize empty-image strip. Tests that care
+  // about the strip behavior live in the shared package.
+  stripEmptyImages: (html: string) => html,
 }));
 
 import { GET, POST } from "../route";

@@ -33,6 +33,8 @@ interface Article {
   tags: string[];
   cover_image_url: string | null;
   updated_at?: string;
+  rejected_at?: string | null;
+  rejection_reason?: string | null;
 }
 
 export default async function EditArticlePage({

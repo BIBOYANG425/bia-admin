@@ -5,6 +5,7 @@ import {
   deriveExcerpt,
   sanitizeArticleHtml,
   slugify,
+  stripEmptyImages,
   withCollisionSuffix,
 } from "@biboyang425/bia-shared/articles";
 import { writeAudit } from "@/lib/admin/audit-log";
@@ -110,7 +111,10 @@ export async function PATCH(request: Request, ctx: RouteContext) {
     }
 
     if (parsed.data.html !== undefined) {
-      const htmlClean = sanitizeArticleHtml(parsed.data.html);
+      // Sanitize, then drop any <img> without a usable src — same policy as
+      // POST. Authors fill missing slots via the editor's missing-images
+      // panel; anything still empty at save time is stripped.
+      const htmlClean = stripEmptyImages(sanitizeArticleHtml(parsed.data.html));
       if (!htmlClean) {
         return NextResponse.json(
           { error: "empty_html_after_sanitize" },
