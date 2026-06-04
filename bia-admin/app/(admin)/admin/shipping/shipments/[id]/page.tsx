@@ -29,11 +29,14 @@ import { StatusProgress } from "@/components/shipping/StatusProgress";
 import { BatchProgress } from "@/components/shipping/BatchProgress";
 import { ParcelStatusPill } from "@/components/shipping/ParcelStatusPill";
 import {
+  PARCEL_STATUS_META,
+  PARCEL_STATUS_VALUES,
   SHIPMENT_STATUS_VALUES,
   SHIPPING_METHOD_META,
   SHIPMENT_STEPS,
   nextShipmentStatus,
   type Parcel,
+  type ParcelStatus,
   type Shipment,
   type ShipmentStatus,
 } from "@biboyang425/bia-shared/shipping";
@@ -86,6 +89,10 @@ export default function AdminShipmentDetailPage() {
   // Attach flow
   const [showAttach, setShowAttach] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Bulk advance all parcels in this batch
+  const [bulkStatus, setBulkStatus] = useState<ParcelStatus | "">("");
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -223,6 +230,31 @@ export default function AdminShipmentDetailPage() {
     setTimeout(() => setToast(null), 1500);
     setSelected(new Set());
     setShowAttach(false);
+    await load();
+  };
+
+  const advanceParcels = async () => {
+    if (!bulkStatus || parcels.length === 0) return;
+    setBulkBusy(true);
+    const res = await fetch(
+      `/api/admin/shipping/shipments/${id}/advance-parcels`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: bulkStatus }),
+      },
+    );
+    setBulkBusy(false);
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      setToast(err.error ?? "批量推进失败");
+      setTimeout(() => setToast(null), 1800);
+      return;
+    }
+    const data = (await res.json()) as { updated: number; skipped: number };
+    setToast(`已推进 ${data.updated} 个包裹（跳过 ${data.skipped}）`);
+    setTimeout(() => setToast(null), 2200);
+    setBulkStatus("");
     await load();
   };
 
@@ -405,6 +437,45 @@ export default function AdminShipmentDetailPage() {
           <BatchProgress parcels={parcels} />
         </CardContent>
       </Card>
+
+      {/* Bulk-advance all parcels in this batch (one action → whole flight) */}
+      {parcels.length > 0 && (
+        <Card>
+          <CardHeader className="p-4">
+            <CardTitle className="text-base">批量推进包裹状态</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 p-4 pt-0">
+            <p className="text-xs text-muted-foreground">
+              一键把本批 {parcels.length} 个包裹全部推进到所选状态（默认只前进，跳过
+              丢失/退回/已在该状态的包裹）。审计照常记录；暂不通知用户。
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <select
+                value={bulkStatus}
+                onChange={(e) =>
+                  setBulkStatus(e.target.value as ParcelStatus | "")
+                }
+                className="h-9 min-w-0 flex-1 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+              >
+                <option value="">选目标状态…</option>
+                {PARCEL_STATUS_VALUES.map((s) => (
+                  <option key={s} value={s}>
+                    {PARCEL_STATUS_META[s].label}
+                  </option>
+                ))}
+              </select>
+              <Button
+                type="button"
+                className="shrink-0"
+                onClick={advanceParcels}
+                disabled={!bulkStatus || bulkBusy}
+              >
+                {bulkBusy ? "推进中…" : "批量推进"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Attached parcels + attach flow */}
       <div className="space-y-3">
