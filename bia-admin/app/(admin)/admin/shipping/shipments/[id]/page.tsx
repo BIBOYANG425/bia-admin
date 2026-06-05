@@ -96,43 +96,50 @@ export default function AdminShipmentDetailPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [res, unassignedRes] = await Promise.all([
-      fetch(`/api/admin/shipping/shipments/${id}`, { cache: "no-store" }),
-      fetch(
-        `/api/admin/shipping/parcels?shipment_id=null&status=received_cn&limit=200`,
-        { cache: "no-store" },
-      ),
-    ]);
-    if (!res.ok) {
-      setError(res.status === 404 ? "批次不存在" : "加载失败");
-      setLoading(false);
-      return;
-    }
-    const data = (await res.json()) as { shipment: Shipment; parcels: Parcel[] };
-    setShipment(data.shipment);
-    setParcels(data.parcels);
-    setDraftName(data.shipment.name);
-    setDraftStatus(data.shipment.status);
-    setDraftCarrier(data.shipment.carrier ?? "");
-    setDraftTracking(data.shipment.international_tracking ?? "");
-    setDraftDeparted(toLocalInput(data.shipment.departed_cn_at));
-    setDraftArrived(toLocalInput(data.shipment.arrived_us_at));
-    setDraftLocation(data.shipment.pickup_location ?? "");
-    setDraftStart(toLocalInput(data.shipment.pickup_starts_at));
-    setDraftEnd(toLocalInput(data.shipment.pickup_ends_at));
-    setDraftPrice(
-      data.shipment.price_per_kg_cents !== null
-        ? String(data.shipment.price_per_kg_cents)
-        : "",
-    );
-    setDraftNotes(data.shipment.notes ?? "");
+    try {
+      const [res, unassignedRes] = await Promise.all([
+        fetch(`/api/admin/shipping/shipments/${id}`, { cache: "no-store" }),
+        fetch(
+          `/api/admin/shipping/parcels?shipment_id=null&status=received_cn&limit=200`,
+          { cache: "no-store" },
+        ),
+      ]);
+      if (!res.ok) {
+        setError(res.status === 404 ? "批次不存在" : "加载失败");
+        return;
+      }
+      const data = (await res.json()) as {
+        shipment: Shipment;
+        parcels: Parcel[];
+      };
+      setShipment(data.shipment);
+      setParcels(data.parcels);
+      setDraftName(data.shipment.name);
+      setDraftStatus(data.shipment.status);
+      setDraftCarrier(data.shipment.carrier ?? "");
+      setDraftTracking(data.shipment.international_tracking ?? "");
+      setDraftDeparted(toLocalInput(data.shipment.departed_cn_at));
+      setDraftArrived(toLocalInput(data.shipment.arrived_us_at));
+      setDraftLocation(data.shipment.pickup_location ?? "");
+      setDraftStart(toLocalInput(data.shipment.pickup_starts_at));
+      setDraftEnd(toLocalInput(data.shipment.pickup_ends_at));
+      setDraftPrice(
+        data.shipment.price_per_kg_cents !== null
+          ? String(data.shipment.price_per_kg_cents)
+          : "",
+      );
+      setDraftNotes(data.shipment.notes ?? "");
 
-    if (unassignedRes.ok) {
-      const u = (await unassignedRes.json()) as { parcels: Parcel[] };
-      setUnassigned(u.parcels);
+      if (unassignedRes.ok) {
+        const u = (await unassignedRes.json()) as { parcels: Parcel[] };
+        setUnassigned(u.parcels);
+      }
+      setError(null);
+    } catch {
+      setError("加载失败");
+    } finally {
+      setLoading(false);
     }
-    setError(null);
-    setLoading(false);
   }, [id]);
 
   useEffect(() => {
@@ -141,22 +148,29 @@ export default function AdminShipmentDetailPage() {
 
   const patchShipment = async (patch: Record<string, unknown>) => {
     setSaving(true);
-    const res = await fetch(`/api/admin/shipping/shipments/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    });
-    setSaving(false);
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as { error?: string };
-      setToast(err.error ?? "保存失败");
+    try {
+      const res = await fetch(`/api/admin/shipping/shipments/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        setToast(err.error ?? "保存失败");
+        setTimeout(() => setToast(null), 1800);
+        return false;
+      }
+      setToast("已保存");
+      setTimeout(() => setToast(null), 1500);
+      await load();
+      return true;
+    } catch {
+      setToast("保存失败");
       setTimeout(() => setToast(null), 1800);
       return false;
+    } finally {
+      setSaving(false);
     }
-    setToast("已保存");
-    setTimeout(() => setToast(null), 1500);
-    await load();
-    return true;
   };
 
   const saveAll = async () => {
@@ -213,49 +227,61 @@ export default function AdminShipmentDetailPage() {
   const attachSelected = async () => {
     if (selected.size === 0) return;
     setSaving(true);
-    const res = await fetch(`/api/admin/shipping/shipments/${id}/attach`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ parcel_ids: Array.from(selected) }),
-    });
-    setSaving(false);
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as { error?: string };
-      setToast(err.error ?? "附加失败");
+    try {
+      const res = await fetch(`/api/admin/shipping/shipments/${id}/attach`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parcel_ids: Array.from(selected) }),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        setToast(err.error ?? "附加失败");
+        setTimeout(() => setToast(null), 1800);
+        return;
+      }
+      const data = (await res.json()) as { updated: number };
+      setToast(`已附加 ${data.updated} 个`);
+      setTimeout(() => setToast(null), 1500);
+      setSelected(new Set());
+      setShowAttach(false);
+      await load();
+    } catch {
+      setToast("附加失败");
       setTimeout(() => setToast(null), 1800);
-      return;
+    } finally {
+      setSaving(false);
     }
-    const data = (await res.json()) as { updated: number };
-    setToast(`已附加 ${data.updated} 个`);
-    setTimeout(() => setToast(null), 1500);
-    setSelected(new Set());
-    setShowAttach(false);
-    await load();
   };
 
   const advanceParcels = async () => {
     if (!bulkStatus || parcels.length === 0) return;
     setBulkBusy(true);
-    const res = await fetch(
-      `/api/admin/shipping/shipments/${id}/advance-parcels`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: bulkStatus }),
-      },
-    );
-    setBulkBusy(false);
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as { error?: string };
-      setToast(err.error ?? "批量推进失败");
+    try {
+      const res = await fetch(
+        `/api/admin/shipping/shipments/${id}/advance-parcels`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: bulkStatus }),
+        },
+      );
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        setToast(err.error ?? "批量推进失败");
+        setTimeout(() => setToast(null), 1800);
+        return;
+      }
+      const data = (await res.json()) as { updated: number; skipped: number };
+      setToast(`已推进 ${data.updated} 个包裹（跳过 ${data.skipped}）`);
+      setTimeout(() => setToast(null), 2200);
+      setBulkStatus("");
+      await load();
+    } catch {
+      setToast("批量推进失败");
       setTimeout(() => setToast(null), 1800);
-      return;
+    } finally {
+      setBulkBusy(false);
     }
-    const data = (await res.json()) as { updated: number; skipped: number };
-    setToast(`已推进 ${data.updated} 个包裹（跳过 ${data.skipped}）`);
-    setTimeout(() => setToast(null), 2200);
-    setBulkStatus("");
-    await load();
   };
 
   if (loading) {

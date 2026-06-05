@@ -50,13 +50,16 @@ export default function AdminShipmentRequestsPage() {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const qs = filter ? `?status=${filter}` : "";
-      const res = await fetch(`/api/admin/shipping/requests${qs}`, {
-        cache: "no-store",
-      });
-      if (cancelled) return;
-      if (res.ok) setRequests((await res.json()) as ShipmentRequest[]);
-      setLoading(false);
+      try {
+        const qs = filter ? `?status=${filter}` : "";
+        const res = await fetch(`/api/admin/shipping/requests${qs}`, {
+          cache: "no-store",
+        });
+        if (cancelled) return;
+        if (res.ok) setRequests((await res.json()) as ShipmentRequest[]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
     return () => {
       cancelled = true;
@@ -71,27 +74,30 @@ export default function AdminShipmentRequestsPage() {
     const draft = drafts[id];
     if (!draft) return;
     setSavingId(id);
-    const res = await fetch(`/api/admin/shipping/requests/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(draft),
-    });
-    setSavingId(null);
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as { error?: string };
-      setToast(err.error ?? "保存失败");
-      setTimeout(() => setToast(null), 1800);
-      return;
+    try {
+      const res = await fetch(`/api/admin/shipping/requests/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draft),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        setToast(err.error ?? "保存失败");
+        setTimeout(() => setToast(null), 1800);
+        return;
+      }
+      const updated = (await res.json()) as ShipmentRequest;
+      setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)));
+      setDrafts((prev) => {
+        const nextState = { ...prev };
+        delete nextState[id];
+        return nextState;
+      });
+      setToast("已保存");
+      setTimeout(() => setToast(null), 1500);
+    } finally {
+      setSavingId(null);
     }
-    const updated = (await res.json()) as ShipmentRequest;
-    setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)));
-    setDrafts((prev) => {
-      const nextState = { ...prev };
-      delete nextState[id];
-      return nextState;
-    });
-    setToast("已保存");
-    setTimeout(() => setToast(null), 1500);
   };
 
   return (
@@ -130,7 +136,7 @@ export default function AdminShipmentRequestsPage() {
             const draft = drafts[r.id] ?? {};
             const currentStatus = draft.status ?? r.status;
             const dirty =
-              draft.status !== undefined ||
+              (draft.status !== undefined && draft.status !== r.status) ||
               (draft.admin_note !== undefined &&
                 draft.admin_note !== r.admin_note);
             return (

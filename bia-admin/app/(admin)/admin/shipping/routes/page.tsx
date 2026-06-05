@@ -29,21 +29,24 @@ export default function AdminShippingRoutesPage() {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const res = await fetch("/api/admin/shipping/routes", {
-        cache: "no-store",
-      });
-      if (cancelled) return;
-      if (res.ok) {
-        const data = (await res.json()) as ShippingRoute[];
-        setRoutes(
-          [...data].sort(
-            (a, b) =>
-              (SHIPPING_METHOD_ORDER[a.method] ?? 99) -
-              (SHIPPING_METHOD_ORDER[b.method] ?? 99),
-          ),
-        );
+      try {
+        const res = await fetch("/api/admin/shipping/routes", {
+          cache: "no-store",
+        });
+        if (cancelled) return;
+        if (res.ok) {
+          const data = (await res.json()) as ShippingRoute[];
+          setRoutes(
+            [...data].sort(
+              (a, b) =>
+                (SHIPPING_METHOD_ORDER[a.method] ?? 99) -
+                (SHIPPING_METHOD_ORDER[b.method] ?? 99),
+            ),
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      setLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -54,27 +57,30 @@ export default function AdminShippingRoutesPage() {
     const draft = drafts[id];
     if (!draft) return;
     setSavingId(id);
-    const res = await fetch("/api/admin/shipping/routes", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...draft, id }),
-    });
-    setSavingId(null);
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as { error?: string };
-      setToast(err.error ?? "保存失败");
-      setTimeout(() => setToast(null), 1800);
-      return;
+    try {
+      const res = await fetch("/api/admin/shipping/routes", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...draft, id }),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        setToast(err.error ?? "保存失败");
+        setTimeout(() => setToast(null), 1800);
+        return;
+      }
+      const updated = (await res.json()) as ShippingRoute;
+      setRoutes((prev) => prev.map((r) => (r.id === id ? updated : r)));
+      setDrafts((prev) => {
+        const nextState = { ...prev };
+        delete nextState[id];
+        return nextState;
+      });
+      setToast("已保存");
+      setTimeout(() => setToast(null), 1500);
+    } finally {
+      setSavingId(null);
     }
-    const updated = (await res.json()) as ShippingRoute;
-    setRoutes((prev) => prev.map((r) => (r.id === id ? updated : r)));
-    setDrafts((prev) => {
-      const nextState = { ...prev };
-      delete nextState[id];
-      return nextState;
-    });
-    setToast("已保存");
-    setTimeout(() => setToast(null), 1500);
   };
 
   const updateDraft = (id: string, patch: Partial<ShippingRoute>) => {

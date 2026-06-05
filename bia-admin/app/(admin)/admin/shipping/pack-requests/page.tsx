@@ -63,26 +63,29 @@ export default function AdminPackRequestsPage() {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const qs = filter ? `?status=${filter}` : "";
-      const [rRes, sRes] = await Promise.all([
-        fetch(`/api/admin/shipping/pack-requests${qs}`, { cache: "no-store" }),
-        fetch("/api/admin/shipping/shipments", { cache: "no-store" }),
-      ]);
-      if (cancelled) return;
-      if (rRes.ok) {
-        setRequests((await rRes.json()) as PackRequestWithParcels[]);
-      }
-      if (sRes.ok) {
-        const all = (await sRes.json()) as Shipment[];
-        setShipments(
-          all.filter((s) =>
-            OPEN_SHIPMENT_STATUSES.includes(
-              s.status as (typeof OPEN_SHIPMENT_STATUSES)[number],
+      try {
+        const qs = filter ? `?status=${filter}` : "";
+        const [rRes, sRes] = await Promise.all([
+          fetch(`/api/admin/shipping/pack-requests${qs}`, { cache: "no-store" }),
+          fetch("/api/admin/shipping/shipments", { cache: "no-store" }),
+        ]);
+        if (cancelled) return;
+        if (rRes.ok) {
+          setRequests((await rRes.json()) as PackRequestWithParcels[]);
+        }
+        if (sRes.ok) {
+          const all = (await sRes.json()) as Shipment[];
+          setShipments(
+            all.filter((s) =>
+              OPEN_SHIPMENT_STATUSES.includes(
+                s.status as (typeof OPEN_SHIPMENT_STATUSES)[number],
+              ),
             ),
-          ),
-        );
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      setLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -117,28 +120,33 @@ export default function AdminPackRequestsPage() {
     const shipmentId = pickedShipment[requestId];
     if (!shipmentId) return;
     setAttachingId(requestId);
-    const res = await fetch(
-      `/api/admin/shipping/pack-requests/${requestId}/attach`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shipment_id: shipmentId }),
-      },
-    );
-    setAttachingId(null);
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as { error?: string };
-      showToast(err.error ?? "附加失败", 1800);
-      return;
+    try {
+      const res = await fetch(
+        `/api/admin/shipping/pack-requests/${requestId}/attach`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ shipment_id: shipmentId }),
+        },
+      );
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        showToast(err.error ?? "附加失败", 1800);
+        return;
+      }
+      const data = (await res.json()) as { attached: number };
+      showToast(`已附加 ${data.attached} 个包裹 · 申请已标记 approved`, 2500);
+      setPickedShipment((prev) => {
+        const nextState = { ...prev };
+        delete nextState[requestId];
+        return nextState;
+      });
+      await reload();
+    } catch {
+      showToast("附加失败", 1800);
+    } finally {
+      setAttachingId(null);
     }
-    const data = (await res.json()) as { attached: number };
-    showToast(`已附加 ${data.attached} 个包裹 · 申请已标记 approved`, 2500);
-    setPickedShipment((prev) => {
-      const nextState = { ...prev };
-      delete nextState[requestId];
-      return nextState;
-    });
-    await reload();
   };
 
   const updateDraft = (id: string, patch: Draft) => {
@@ -149,24 +157,29 @@ export default function AdminPackRequestsPage() {
     const draft = drafts[id];
     if (!draft) return;
     setSavingId(id);
-    const res = await fetch(`/api/admin/shipping/pack-requests/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(draft),
-    });
-    setSavingId(null);
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as { error?: string };
-      showToast(err.error ?? "保存失败", 1800);
-      return;
+    try {
+      const res = await fetch(`/api/admin/shipping/pack-requests/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draft),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        showToast(err.error ?? "保存失败", 1800);
+        return;
+      }
+      setDrafts((prev) => {
+        const nextState = { ...prev };
+        delete nextState[id];
+        return nextState;
+      });
+      showToast("已保存");
+      await reload();
+    } catch {
+      showToast("保存失败", 1800);
+    } finally {
+      setSavingId(null);
     }
-    setDrafts((prev) => {
-      const nextState = { ...prev };
-      delete nextState[id];
-      return nextState;
-    });
-    showToast("已保存");
-    await reload();
   };
 
   return (
@@ -207,7 +220,7 @@ export default function AdminPackRequestsPage() {
             const draft = drafts[r.id] ?? {};
             const currentStatus = draft.status ?? r.status;
             const dirty =
-              draft.status !== undefined ||
+              (draft.status !== undefined && draft.status !== r.status) ||
               (draft.admin_note !== undefined &&
                 draft.admin_note !== r.admin_note) ||
               (draft.shipment_id !== undefined &&

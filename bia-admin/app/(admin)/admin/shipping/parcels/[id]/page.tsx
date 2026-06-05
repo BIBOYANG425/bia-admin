@@ -79,29 +79,41 @@ export default function AdminParcelDetailPage() {
 
   const loadParcel = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/admin/shipping/parcels/${id}`, {
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      setError(res.status === 404 ? "包裹不存在" : "加载失败");
+    try {
+      const res = await fetch(`/api/admin/shipping/parcels/${id}`, {
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        setError(res.status === 404 ? "包裹不存在" : "加载失败");
+        return;
+      }
+      const data = (await res.json()) as DetailResponse;
+      setParcel(data.parcel);
+      setEvents(data.events);
+      setShipment(data.shipment);
+      setPhotoUrls(data.photoUrls ?? []);
+      setDraftStatus(data.parcel.status);
+      setDraftWeight(
+        data.parcel.weight_grams !== null
+          ? String(data.parcel.weight_grams)
+          : "",
+      );
+      setDraftL(
+        data.parcel.dim_cm_l !== null ? String(data.parcel.dim_cm_l) : "",
+      );
+      setDraftW(
+        data.parcel.dim_cm_w !== null ? String(data.parcel.dim_cm_w) : "",
+      );
+      setDraftH(
+        data.parcel.dim_cm_h !== null ? String(data.parcel.dim_cm_h) : "",
+      );
+      setDraftNotes(data.parcel.notes ?? "");
+      setError(null);
+    } catch {
+      setError("加载失败");
+    } finally {
       setLoading(false);
-      return;
     }
-    const data = (await res.json()) as DetailResponse;
-    setParcel(data.parcel);
-    setEvents(data.events);
-    setShipment(data.shipment);
-    setPhotoUrls(data.photoUrls ?? []);
-    setDraftStatus(data.parcel.status);
-    setDraftWeight(
-      data.parcel.weight_grams !== null ? String(data.parcel.weight_grams) : "",
-    );
-    setDraftL(data.parcel.dim_cm_l !== null ? String(data.parcel.dim_cm_l) : "");
-    setDraftW(data.parcel.dim_cm_w !== null ? String(data.parcel.dim_cm_w) : "");
-    setDraftH(data.parcel.dim_cm_h !== null ? String(data.parcel.dim_cm_h) : "");
-    setDraftNotes(data.parcel.notes ?? "");
-    setError(null);
-    setLoading(false);
   }, [id]);
 
   useEffect(() => {
@@ -111,20 +123,25 @@ export default function AdminParcelDetailPage() {
   const handleSave = async (patch: Record<string, unknown>) => {
     setSaving(true);
     setError(null);
-    const res = await fetch(`/api/admin/shipping/parcels/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    });
-    setSaving(false);
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as { error?: string };
-      setError(err.error ?? "保存失败");
-      return;
+    try {
+      const res = await fetch(`/api/admin/shipping/parcels/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        setError(err.error ?? "保存失败");
+        return;
+      }
+      setToast("已保存");
+      setTimeout(() => setToast(null), 1500);
+      await loadParcel();
+    } catch {
+      setError("保存失败");
+    } finally {
+      setSaving(false);
     }
-    setToast("已保存");
-    setTimeout(() => setToast(null), 1500);
-    await loadParcel();
   };
 
   const handleSaveAll = async () => {

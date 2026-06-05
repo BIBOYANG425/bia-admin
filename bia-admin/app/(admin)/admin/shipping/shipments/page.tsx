@@ -48,12 +48,15 @@ export default function AdminShipmentsPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const res = await fetch("/api/admin/shipping/shipments", {
-        cache: "no-store",
-      });
-      if (cancelled) return;
-      if (res.ok) setShipments((await res.json()) as Shipment[]);
-      setLoading(false);
+      try {
+        const res = await fetch("/api/admin/shipping/shipments", {
+          cache: "no-store",
+        });
+        if (cancelled) return;
+        if (res.ok) setShipments((await res.json()) as Shipment[]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
     return () => {
       cancelled = true;
@@ -63,25 +66,31 @@ export default function AdminShipmentsPage() {
   const createShipment = async () => {
     if (!name.trim()) return;
     setSaving(true);
-    const res = await fetch("/api/admin/shipping/shipments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name.trim(), carrier, notes }),
-    });
-    setSaving(false);
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as { error?: string };
-      setToast(err.error ?? "创建失败");
+    try {
+      const res = await fetch("/api/admin/shipping/shipments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), carrier, notes }),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        setToast(err.error ?? "创建失败");
+        setTimeout(() => setToast(null), 1800);
+        return;
+      }
+      setName("");
+      setCarrier("");
+      setNotes("");
+      setShowCreate(false);
+      setToast("已创建");
+      setTimeout(() => setToast(null), 1500);
+      await load();
+    } catch {
+      setToast("创建失败");
       setTimeout(() => setToast(null), 1800);
-      return;
+    } finally {
+      setSaving(false);
     }
-    setName("");
-    setCarrier("");
-    setNotes("");
-    setShowCreate(false);
-    setToast("已创建");
-    setTimeout(() => setToast(null), 1500);
-    await load();
   };
 
   return (

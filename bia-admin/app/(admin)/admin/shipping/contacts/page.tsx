@@ -37,12 +37,15 @@ export default function AdminShippingContactsPage() {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const res = await fetch("/api/admin/shipping/contacts", {
-        cache: "no-store",
-      });
-      if (cancelled) return;
-      if (res.ok) setContacts((await res.json()) as ShippingContact[]);
-      setLoading(false);
+      try {
+        const res = await fetch("/api/admin/shipping/contacts", {
+          cache: "no-store",
+        });
+        if (cancelled) return;
+        if (res.ok) setContacts((await res.json()) as ShippingContact[]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
     return () => {
       cancelled = true;
@@ -58,25 +61,28 @@ export default function AdminShippingContactsPage() {
     const draft = drafts[id];
     if (!draft) return;
     setSavingId(id);
-    const res = await fetch("/api/admin/shipping/contacts", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...draft, id }),
-    });
-    setSavingId(null);
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as { error?: string };
-      showToast(err.error ?? "保存失败", 1800);
-      return;
+    try {
+      const res = await fetch("/api/admin/shipping/contacts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...draft, id }),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        showToast(err.error ?? "保存失败", 1800);
+        return;
+      }
+      const updated = (await res.json()) as ShippingContact;
+      setContacts((prev) => prev.map((c) => (c.id === id ? updated : c)));
+      setDrafts((prev) => {
+        const nextState = { ...prev };
+        delete nextState[id];
+        return nextState;
+      });
+      showToast("已保存");
+    } finally {
+      setSavingId(null);
     }
-    const updated = (await res.json()) as ShippingContact;
-    setContacts((prev) => prev.map((c) => (c.id === id ? updated : c)));
-    setDrafts((prev) => {
-      const nextState = { ...prev };
-      delete nextState[id];
-      return nextState;
-    });
-    showToast("已保存");
   };
 
   const updateDraft = (id: string, patch: Partial<ShippingContact>) => {
@@ -92,22 +98,25 @@ export default function AdminShippingContactsPage() {
       return;
     }
     setUploadingId(id);
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("id", id);
-    const res = await fetch("/api/admin/shipping/contacts/qr-upload", {
-      method: "POST",
-      body: fd,
-    });
-    setUploadingId(null);
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as { error?: string };
-      showToast("上传失败：" + (err.error ?? ""), 2000);
-      return;
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("id", id);
+      const res = await fetch("/api/admin/shipping/contacts/qr-upload", {
+        method: "POST",
+        body: fd,
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        showToast("上传失败：" + (err.error ?? ""), 2000);
+        return;
+      }
+      const { url } = (await res.json()) as { url: string };
+      updateDraft(id, { qr_code_url: url });
+      showToast("二维码已上传，记得点保存", 2000);
+    } finally {
+      setUploadingId(null);
     }
-    const { url } = (await res.json()) as { url: string };
-    updateDraft(id, { qr_code_url: url });
-    showToast("二维码已上传，记得点保存", 2000);
   };
 
   const value = <K extends keyof ShippingContact>(
