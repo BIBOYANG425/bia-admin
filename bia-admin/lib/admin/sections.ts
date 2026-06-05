@@ -8,6 +8,7 @@ import {
   Route,
   Ship,
   Star,
+  UserRound,
   Users,
   Users2,
   type LucideIcon,
@@ -35,6 +36,8 @@ export const ADMIN_GROUPS: Record<AdminGroup, string> = {
 export const ADMIN_SECTIONS: AdminSection[] = [
   // Phase 1 — enabled
   { href: "/admin/members", label: "Members", icon: Users, group: "people", enabled: true },
+  // Phase 3 slice 3a — 用户 (students, migrated from roommate /admin/users; read-only)
+  { href: "/admin/users",   label: "用户",     icon: UserRound, group: "people", enabled: true },
 
   // Phase 2 — disabled placeholders
   { href: "/admin/blog",     label: "Blog",     icon: Newspaper, group: "content",   enabled: true },
