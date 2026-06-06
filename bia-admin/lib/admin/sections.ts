@@ -41,7 +41,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
 
   // Phase 2 — disabled placeholders
   { href: "/admin/blog",     label: "Blog",     icon: Newspaper, group: "content",   enabled: true },
-  { href: "/admin/events",   label: "Events",   icon: Calendar,  group: "content",   enabled: false, comingIn: "Phase 2" },
+  { href: "/admin/events",   label: "活动",     icon: Calendar,  group: "content",   enabled: true },
   { href: "/admin/sponsors", label: "Sponsors", icon: Star,      group: "content",   enabled: false, comingIn: "Phase 2" },
   { href: "/admin/squad",    label: "Squad",    icon: Users2,    group: "community", enabled: false, comingIn: "Phase 2" },
 
