@@ -1,6 +1,6 @@
 {
   "name": "@biboyang425/bia-shared",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "private": false,
   "sideEffects": false,
   "description": "Types + Supabase client factories shared between bia-admin and uscbia.com",
@@ -12,6 +12,7 @@
   },
   "exports": {
     ".": "./src/index.ts",
+    "./analytics": "./src/analytics/index.ts",
     "./articles": "./src/articles/index.ts",
     "./shipping": "./src/shipping/index.ts",
     "./types": "./src/types.ts",
