@@ -150,7 +150,7 @@ export default function PrivacyPage() {
         </Section>
 
         <footer className="mt-16 border-t border-border pt-6 text-sm text-muted-foreground">
-          <Link href="/" className="underline">
+          <Link href="/admin" className="underline">
             Back to BIA Admin
           </Link>
         </footer>
