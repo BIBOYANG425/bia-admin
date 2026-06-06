@@ -43,6 +43,12 @@ export default async function AdminShell({
               Sign out
             </button>
           </form>
+          <Link
+            href="/privacy"
+            className="mt-3 block text-zinc-500 hover:text-zinc-300 text-xs underline-offset-2 hover:underline"
+          >
+            Privacy
+          </Link>
         </div>
       </aside>
 
