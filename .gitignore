@@ -50,3 +50,8 @@ skills-lock.json
 
 # codegraph local index (per-repo SQLite db, not for VCS)
 .codegraph/
+
+# codex local tooling
+.codex/
+# npm lockfile — this is a pnpm project, do not commit
+package-lock.json
