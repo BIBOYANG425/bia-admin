@@ -47,3 +47,6 @@ yarn-error.log*
 # Misc local files we don't want in the bia-admin repo
 .mcp.json
 skills-lock.json
+
+# codegraph local index (per-repo SQLite db, not for VCS)
+.codegraph/
