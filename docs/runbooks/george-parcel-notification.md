@@ -3,16 +3,19 @@
 **Status:** producer applied to Supabase 2026-06-06 (migrations
 `20260606061321_parcel_notification_enqueue` +
 `20260606061351_parcel_notification_enqueue_branch_states`).
-Consumer (george cron) is the remaining work.
+Consumer code complete on george `main`; production deploy pending.
 
-> ⚠️ **Known schema gap (fix pending apply):** the branch-states migration
-> enqueues kinds `lost`/`returned`/`disputed`, but the `kind` CHECK constraint
-> (created inline in bia-roommate `20260419_shipping.sql`) only allows the
-> original 7 kinds. If the 7-kind function body is live, marking a parcel
+> ⚠️ **Known schema gap — apply the fix NOW, do not wait for george
+> go-live:** the branch-states migration enqueues kinds
+> `lost`/`returned`/`disputed`, but the `kind` CHECK constraint (created
+> inline in bia-roommate `20260419_shipping.sql`) only allows the original
+> 7 kinds. If the 7-kind function body is live, marking a parcel
 > lost/returned/disputed aborts the officer's UPDATE with a check_violation
-> (hard 500). Migration `20260611000001_widen_shipping_notification_kinds.sql`
-> widens the CHECK; apply it (and run its verification SQL) before relying on
-> branch-state transitions.
+> — a **live, officer-facing hard 500 today**, with or without george.
+> Migration `20260611000001_widen_shipping_notification_kinds.sql` widens
+> the CHECK and self-asserts its post-conditions; apply it (and run its
+> verification SQL) immediately. It is decoupled from the george deploy
+> steps below — those gate the consumer, not this fix.
 
 > ⚠️ **Do NOT apply the bia-roommate copy of
 > `20260606_parcel_notification_enqueue.sql` now.** That copy has the older
@@ -257,9 +260,19 @@ recommend doing that in the same PR that lands these runbook docs.
      AND created_at < '<go-live cutoff, e.g. 2026-06-11T00:00:00Z>';
    ```
 
-2. **Apply `20260611000001_widen_shipping_notification_kinds.sql`** (and
-   run its verification SQL) so branch-state transitions can't abort
-   officer updates.
+   > ⚠️ **Skipping is PERMANENT per (parcel, kind), not a deferral.** The
+   > producer dedupes on `dedup_key = '<parcel_id>:<kind>'` with
+   > `ON CONFLICT DO NOTHING`, and the skipped row keeps its `dedup_key` —
+   > so the trigger will never enqueue that (parcel, kind) again, and
+   > george never re-reads non-`pending` rows. A parcel whose `arrived_us`
+   > row you skip will never get an `arrived_us` notification unless you
+   > manually flip that row back to `pending`. Choose the cutoff knowing it
+   > **suppresses** those notifications forever, not postpones them.
+
+2. **Confirm `20260611000001_widen_shipping_notification_kinds.sql` is
+   already applied** (and run its verification SQL). This migration is NOT
+   gated on the george deploy — it fixes a live officer-facing 500 (see the
+   warning at the top) and should have been applied the moment it merged.
 3. **Add the opt-out column** by applying a follow-up migration (call it
    `20260606_students_parcel_opt_out.sql`). Until then, george should
    treat the opt-out filter as a no-op (always-`false` fallback).
