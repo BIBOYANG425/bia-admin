@@ -75,6 +75,15 @@ function chain(result: Result, filters?: Array<[string, ...unknown[]]>) {
   return c;
 }
 
+/** Read chain for the existence probe: .eq() chains, .maybeSingle() resolves. */
+function fetchChain(result: { data: unknown; error: { message: string } | null }) {
+  const c: any = {
+    eq: () => c,
+    maybeSingle: () => Promise.resolve(result),
+  };
+  return c;
+}
+
 beforeEach(() => {
   requireRoleMock.mockReset();
   fromMock.mockReset();
@@ -88,15 +97,16 @@ describe("POST /api/admin/events/[id]/checkin", () => {
     expect((await res.json()).error).toBe("invalid_body");
   });
 
-  it("check-in on an existing row stamps checked_in_at only — never source/rsvped_at", async () => {
+  it("check-in stamps checked_in_at only when NULL — never source/rsvped_at", async () => {
     let updatePayload: Record<string, unknown> | null = null;
+    const filters: Array<[string, ...unknown[]]> = [];
     const insertSpy = vi.fn();
     fromMock.mockImplementation((table: string) =>
       table === "event_attendance"
         ? {
             update: (p: Record<string, unknown>) => {
               updatePayload = p;
-              return chain({ data: [{ student_id: SID }], error: null });
+              return chain({ data: [{ student_id: SID }], error: null }, filters);
             },
             insert: insertSpy,
           }
@@ -106,6 +116,30 @@ describe("POST /api/admin/events/[id]/checkin", () => {
     expect(res.status).toBe(200);
     expect(Object.keys(updatePayload!)).toEqual(["checked_in_at"]);
     expect(typeof updatePayload!.checked_in_at).toBe("string");
+    // The NULL guard is what keeps the original timestamp on a re-check-in.
+    expect(filters).toEqual([
+      ["eq", "student_id", SID],
+      ["eq", "event_id", "e1"],
+      ["is", "checked_in_at", null],
+    ]);
+    expect(insertSpy).not.toHaveBeenCalled();
+  });
+
+  it("re-check-in on an already-checked-in row is a no-op (original timestamp kept, no insert)", async () => {
+    const insertSpy = vi.fn();
+    fromMock.mockImplementation((table: string) =>
+      table === "event_attendance"
+        ? {
+            // checked_in_at already set → the NULL-guarded update matches 0 rows…
+            update: () => chain({ data: [], error: null }),
+            // …but the row exists, so the route must NOT insert a duplicate.
+            select: () => fetchChain({ data: { student_id: SID }, error: null }),
+            insert: insertSpy,
+          }
+        : {},
+    );
+    const res = await POST(req({ student_id: SID, checked_in: true }), ctxFor("e1"));
+    expect(res.status).toBe(200);
     expect(insertSpy).not.toHaveBeenCalled();
   });
 
@@ -115,6 +149,7 @@ describe("POST /api/admin/events/[id]/checkin", () => {
       table === "event_attendance"
         ? {
             update: () => chain({ data: [], error: null }),
+            select: () => fetchChain({ data: null, error: null }),
             insert: (row: Record<string, unknown>) => {
               inserted = row;
               return Promise.resolve({ error: null });
@@ -133,47 +168,33 @@ describe("POST /api/admin/events/[id]/checkin", () => {
     expect(typeof inserted!.checked_in_at).toBe("string");
   });
 
-  it("undo deletes a never-rsvped walk-in row (guarded delete, no update)", async () => {
-    const filters: Array<[string, ...unknown[]]> = [];
-    const updateSpy = vi.fn();
-    fromMock.mockImplementation((table: string) =>
-      table === "event_attendance"
-        ? {
-            delete: () => chain({ data: [{ student_id: SID }], error: null }, filters),
-            update: updateSpy,
-          }
-        : {},
-    );
-    const res = await POST(req({ student_id: SID, checked_in: false }), ctxFor("e1"));
-    expect(res.status).toBe(200);
-    expect(filters).toEqual([
-      ["eq", "student_id", SID],
-      ["eq", "event_id", "e1"],
-      ["is", "rsvped_at", null],
-      ["not", "checked_in_at", "is", null],
-      ["eq", "source", "checkin"],
-    ]);
-    expect(updateSpy).not.toHaveBeenCalled();
-  });
-
-  it("undo on an rsvped/legacy row clears checked_in_at only — never writes source=rsvp", async () => {
+  it("undo always clears checked_in_at only — never deletes, never writes source=rsvp", async () => {
     let updatePayload: Record<string, unknown> | null = null;
+    const filters: Array<[string, ...unknown[]]> = [];
+    const deleteSpy = vi.fn();
     fromMock.mockImplementation((table: string) =>
       table === "event_attendance"
         ? {
-            delete: () => chain({ data: [], error: null }),
+            // Post-backfill, legacy source='checkin' rows are indistinguishable
+            // from fresh walk-ins — deleting would destroy audit history.
+            delete: deleteSpy,
             update: (p: Record<string, unknown>) => {
               updatePayload = p;
-              return chain({ data: null, error: null });
+              return chain({ data: null, error: null }, filters);
             },
           }
         : {},
     );
     const res = await POST(req({ student_id: SID, checked_in: false }), ctxFor("e1"));
     expect(res.status).toBe(200);
+    expect(deleteSpy).not.toHaveBeenCalled();
     expect(updatePayload).toEqual({ checked_in_at: null });
     expect(updatePayload).not.toHaveProperty("source");
     expect(updatePayload).not.toHaveProperty("rsvped_at");
+    expect(filters).toEqual([
+      ["eq", "student_id", SID],
+      ["eq", "event_id", "e1"],
+    ]);
   });
 
   it("resolves a member_id walk-in then checks in", async () => {
@@ -187,6 +208,7 @@ describe("POST /api/admin/events/[id]/checkin", () => {
       }
       return {
         update: () => chain({ data: [], error: null }),
+        select: () => fetchChain({ data: null, error: null }),
         insert: () => Promise.resolve({ error: null }),
       };
     });

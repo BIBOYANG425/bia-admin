@@ -3,9 +3,10 @@
 //
 // Attendance = checked_in_at IS NOT NULL; RSVP = rsvped_at IS NOT NULL (this
 // route NEVER touches rsvped_at and never rewrites the legacy `source` column
-// on existing rows). Check-in stamps checked_in_at on the existing row, or
-// inserts a walk-in row (source='checkin' kept as legacy back-compat marker).
-// Undo clears checked_in_at; a never-RSVP'd walk-in row is deleted outright.
+// on existing rows). Check-in stamps checked_in_at only when it is still NULL
+// (a repeat check-in keeps the original timestamp), or inserts a walk-in row
+// (source='checkin' kept as legacy back-compat marker). Undo always just
+// clears checked_in_at — this route never DELETEs attendance rows.
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -58,56 +59,59 @@ export async function POST(request: Request, ctx: RouteContext) {
       NextResponse.json({ error: "checkin_failed", details }, { status: 500 });
 
     if (b.checked_in) {
-      // Stamp checked_in_at on the existing row (RSVP'd student or re-check-in).
-      // Only checked_in_at is written — rsvped_at and source stay untouched.
+      // Stamp checked_in_at on the existing row (RSVP'd student or walk-in).
+      // The `checked_in_at IS NULL` guard preserves the ORIGINAL timestamp on
+      // a repeat check-in (e.g. re-scanning a member_id that is already in)
+      // instead of silently overwriting it with a later time. Only
+      // checked_in_at is written — rsvped_at and source stay untouched.
       const checkedInAt = new Date().toISOString();
       const { data: updated, error: updateError } = await admin
         .from("event_attendance")
         .update({ checked_in_at: checkedInAt })
         .eq("student_id", studentId)
         .eq("event_id", eventId)
+        .is("checked_in_at", null)
         .select("student_id");
       if (updateError) return fail(updateError.message);
       if (!updated || updated.length === 0) {
-        // No row yet → walk-in who never RSVP'd. source='checkin' is written
-        // only as the legacy back-compat marker; nothing reads it for semantics.
-        const { error: insertError } = await admin.from("event_attendance").insert({
-          student_id: studentId,
-          event_id: eventId,
-          source: "checkin",
-          rsvped_at: null,
-          checked_in_at: checkedInAt,
-        });
-        if (insertError) return fail(insertError.message);
+        // Nothing stamped: either the student is already checked in (keep the
+        // original timestamp — idempotent no-op) or no row exists (walk-in).
+        const { data: existing, error: existingError } = await admin
+          .from("event_attendance")
+          .select("student_id")
+          .eq("student_id", studentId)
+          .eq("event_id", eventId)
+          .maybeSingle();
+        if (existingError) return fail(existingError.message);
+        if (!existing) {
+          // No row yet → walk-in who never RSVP'd. source='checkin' is written
+          // only as the legacy back-compat marker; nothing reads it for semantics.
+          const { error: insertError } = await admin.from("event_attendance").insert({
+            student_id: studentId,
+            event_id: eventId,
+            source: "checkin",
+            rsvped_at: null,
+            checked_in_at: checkedInAt,
+          });
+          if (insertError) return fail(insertError.message);
+        }
       }
     } else {
-      // Undo. A walk-in row this route created (rsvped_at IS NULL + a live
-      // checked_in_at + source='checkin') never represented an RSVP, so undo
-      // deletes it outright — restoring the "was never here" state instead of
-      // leaving a ghost row. `source` is read here ONLY as a safety guard so
-      // legacy pre-migration RSVP rows (rsvped_at still NULL, source='rsvp')
-      // can never be deleted; it is not used for RSVP/attendance semantics.
-      const { data: deleted, error: deleteError } = await admin
+      // Undo: clear the attendance stamp, keep the row. This route NEVER
+      // deletes — roommate PR #63's migration backfills
+      // checked_in_at = created_at for legacy source='checkin' rows, which
+      // makes a historical roster row indistinguishable (by column values)
+      // from a fresh walk-in this route just created, so any delete here
+      // could destroy pre-migration audit history (created_at and the row
+      // itself). A cleared walk-in row simply stays as a touchpoint record.
+      // Never write source='rsvp' (the old code fabricated RSVPs for
+      // walk-ins here) and never touch rsvped_at.
+      const { error: clearError } = await admin
         .from("event_attendance")
-        .delete()
+        .update({ checked_in_at: null })
         .eq("student_id", studentId)
-        .eq("event_id", eventId)
-        .is("rsvped_at", null)
-        .not("checked_in_at", "is", null)
-        .eq("source", "checkin")
-        .select("student_id");
-      if (deleteError) return fail(deleteError.message);
-      if (!deleted || deleted.length === 0) {
-        // RSVP'd (or legacy) row: only clear the attendance stamp. Never write
-        // source='rsvp' (the old code fabricated RSVPs for walk-ins here) and
-        // never touch rsvped_at.
-        const { error: clearError } = await admin
-          .from("event_attendance")
-          .update({ checked_in_at: null })
-          .eq("student_id", studentId)
-          .eq("event_id", eventId);
-        if (clearError) return fail(clearError.message);
-      }
+        .eq("event_id", eventId);
+      if (clearError) return fail(clearError.message);
     }
 
     return NextResponse.json({
