@@ -52,6 +52,29 @@ function req(body: unknown) {
   });
 }
 
+type Result = { data: unknown[] | null; error: { message: string } | null };
+
+/** Thenable filter chain: .eq/.is/.not return the chain, .select / await resolve it. */
+function chain(result: Result, filters?: Array<[string, ...unknown[]]>) {
+  const c: any = {
+    eq: (...args: unknown[]) => {
+      filters?.push(["eq", ...args]);
+      return c;
+    },
+    is: (...args: unknown[]) => {
+      filters?.push(["is", ...args]);
+      return c;
+    },
+    not: (...args: unknown[]) => {
+      filters?.push(["not", ...args]);
+      return c;
+    },
+    select: () => Promise.resolve(result),
+    then: (onOk: any, onErr: any) => Promise.resolve(result).then(onOk, onErr),
+  };
+  return c;
+}
+
 beforeEach(() => {
   requireRoleMock.mockReset();
   fromMock.mockReset();
@@ -65,13 +88,35 @@ describe("POST /api/admin/events/[id]/checkin", () => {
     expect((await res.json()).error).toBe("invalid_body");
   });
 
-  it("checks in by student_id (upsert source=checkin)", async () => {
-    let captured: any = null;
+  it("check-in on an existing row stamps checked_in_at only — never source/rsvped_at", async () => {
+    let updatePayload: Record<string, unknown> | null = null;
+    const insertSpy = vi.fn();
     fromMock.mockImplementation((table: string) =>
       table === "event_attendance"
         ? {
-            upsert: (row: unknown, opts: unknown) => {
-              captured = { row, opts };
+            update: (p: Record<string, unknown>) => {
+              updatePayload = p;
+              return chain({ data: [{ student_id: SID }], error: null });
+            },
+            insert: insertSpy,
+          }
+        : {},
+    );
+    const res = await POST(req({ student_id: SID, checked_in: true }), ctxFor("e1"));
+    expect(res.status).toBe(200);
+    expect(Object.keys(updatePayload!)).toEqual(["checked_in_at"]);
+    expect(typeof updatePayload!.checked_in_at).toBe("string");
+    expect(insertSpy).not.toHaveBeenCalled();
+  });
+
+  it("check-in with no existing row inserts a walk-in (source=checkin, rsvped_at=null)", async () => {
+    let inserted: Record<string, unknown> | null = null;
+    fromMock.mockImplementation((table: string) =>
+      table === "event_attendance"
+        ? {
+            update: () => chain({ data: [], error: null }),
+            insert: (row: Record<string, unknown>) => {
+              inserted = row;
               return Promise.resolve({ error: null });
             },
           }
@@ -79,21 +124,56 @@ describe("POST /api/admin/events/[id]/checkin", () => {
     );
     const res = await POST(req({ student_id: SID, checked_in: true }), ctxFor("e1"));
     expect(res.status).toBe(200);
-    expect(captured.row).toMatchObject({ student_id: SID, event_id: "e1", source: "checkin" });
-    expect(captured.opts).toMatchObject({ onConflict: "student_id,event_id" });
+    expect(inserted).toMatchObject({
+      student_id: SID,
+      event_id: "e1",
+      source: "checkin",
+      rsvped_at: null,
+    });
+    expect(typeof inserted!.checked_in_at).toBe("string");
   });
 
-  it("undo (checked_in:false) writes source=rsvp", async () => {
-    let captured: any = null;
-    fromMock.mockImplementation(() => ({
-      upsert: (row: unknown) => {
-        captured = row;
-        return Promise.resolve({ error: null });
-      },
-    }));
+  it("undo deletes a never-rsvped walk-in row (guarded delete, no update)", async () => {
+    const filters: Array<[string, ...unknown[]]> = [];
+    const updateSpy = vi.fn();
+    fromMock.mockImplementation((table: string) =>
+      table === "event_attendance"
+        ? {
+            delete: () => chain({ data: [{ student_id: SID }], error: null }, filters),
+            update: updateSpy,
+          }
+        : {},
+    );
     const res = await POST(req({ student_id: SID, checked_in: false }), ctxFor("e1"));
     expect(res.status).toBe(200);
-    expect(captured).toMatchObject({ source: "rsvp" });
+    expect(filters).toEqual([
+      ["eq", "student_id", SID],
+      ["eq", "event_id", "e1"],
+      ["is", "rsvped_at", null],
+      ["not", "checked_in_at", "is", null],
+      ["eq", "source", "checkin"],
+    ]);
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it("undo on an rsvped/legacy row clears checked_in_at only — never writes source=rsvp", async () => {
+    let updatePayload: Record<string, unknown> | null = null;
+    fromMock.mockImplementation((table: string) =>
+      table === "event_attendance"
+        ? {
+            delete: () => chain({ data: [], error: null }),
+            update: (p: Record<string, unknown>) => {
+              updatePayload = p;
+              return chain({ data: null, error: null });
+            },
+          }
+        : {},
+    );
+    const res = await POST(req({ student_id: SID, checked_in: false }), ctxFor("e1"));
+    expect(res.status).toBe(200);
+    expect(updatePayload).toEqual({ checked_in_at: null });
+    expect(updatePayload).not.toHaveProperty("source");
+    expect(updatePayload).not.toHaveProperty("rsvped_at");
   });
 
   it("resolves a member_id walk-in then checks in", async () => {
@@ -105,7 +185,10 @@ describe("POST /api/admin/events/[id]/checkin", () => {
           }),
         };
       }
-      return { upsert: () => Promise.resolve({ error: null }) };
+      return {
+        update: () => chain({ data: [], error: null }),
+        insert: () => Promise.resolve({ error: null }),
+      };
     });
     const res = await POST(req({ member_id: "BIA-000009", checked_in: true }), ctxFor("e1"));
     expect(res.status).toBe(200);

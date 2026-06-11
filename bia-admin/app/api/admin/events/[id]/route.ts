@@ -45,9 +45,11 @@ export async function GET(_request: Request, ctx: RouteContext) {
     }
     if (!event) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
+    // rsvped_at / checked_in_at carry the semantics; `source` is returned only
+    // as the legacy back-compat column (nothing reads it for state anymore).
     const { data: attendance } = await admin
       .from("event_attendance")
-      .select("source, created_at, students(id, name, member_id)")
+      .select("source, rsvped_at, checked_in_at, created_at, students(id, name, member_id)")
       .eq("event_id", id)
       .order("created_at", { ascending: true });
 

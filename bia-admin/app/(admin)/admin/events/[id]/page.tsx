@@ -1,8 +1,9 @@
 "use client";
 
 // Admin event detail — edit form (EventEditor) + RSVP/check-in roster with
-// per-attendee check-in toggle and a member_id walk-in box. rsvp→checkin flips
-// the row's source via /api/admin/events/[id]/checkin. Auth-gated by the API.
+// per-attendee check-in toggle and a member_id walk-in box. RSVP state =
+// rsvped_at, attendance = checked_in_at (legacy `source` is never read);
+// toggled via /api/admin/events/[id]/checkin. Auth-gated by the API.
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
@@ -20,7 +21,10 @@ import {
 } from "@/components/ui/table";
 
 interface AttendanceRow {
+  /** Legacy touchpoint column — kept in the payload for debugging, never read for state. */
   source: string;
+  rsvped_at: string | null;
+  checked_in_at: string | null;
   created_at: string;
   students: { id: string; name: string | null; member_id: string | null } | null;
 }
@@ -105,8 +109,8 @@ export default function AdminEventDetailPage() {
     return <div className="p-8 text-sm text-rose-600">{error ?? "未找到"}</div>;
   }
 
-  const rsvps = attendance.filter((a) => a.source === "rsvp");
-  const checkins = attendance.filter((a) => a.source === "checkin");
+  const rsvps = attendance.filter((a) => a.rsvped_at != null);
+  const checkins = attendance.filter((a) => a.checked_in_at != null);
 
   return (
     <div className="p-8 space-y-6">
@@ -167,7 +171,8 @@ export default function AdminEventDetailPage() {
               <TableBody>
                 {attendance.map((a) => {
                   const sid = a.students?.id;
-                  const checkedIn = a.source === "checkin";
+                  const checkedIn = a.checked_in_at != null;
+                  const rsvped = a.rsvped_at != null;
                   return (
                     <TableRow key={sid ?? a.created_at}>
                       <TableCell className="px-4 py-2">
@@ -177,10 +182,16 @@ export default function AdminEventDetailPage() {
                         {a.students?.member_id ?? "—"}
                       </TableCell>
                       <TableCell className="px-4 py-2 text-xs">
-                        {checkedIn ? "已签到" : "报名"}
+                        {checkedIn
+                          ? rsvped
+                            ? "已签到 · 已报名"
+                            : "已签到"
+                          : rsvped
+                            ? "已报名"
+                            : "—"}
                       </TableCell>
                       <TableCell className="px-4 py-2 text-xs text-muted-foreground">
-                        {fmtDate(a.created_at)}
+                        {fmtDate(a.checked_in_at ?? a.rsvped_at ?? a.created_at)}
                       </TableCell>
                       <TableCell className="px-4 py-2">
                         {sid && (

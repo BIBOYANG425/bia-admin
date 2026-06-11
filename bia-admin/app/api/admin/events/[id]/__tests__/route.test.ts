@@ -86,7 +86,13 @@ describe("GET /api/admin/events/[id]", () => {
             order: () =>
               Promise.resolve({
                 data: [
-                  { source: "rsvp", created_at: "2026-06-01T00:00:00Z", students: { id: "s", name: "A", member_id: "BIA-1" } },
+                  {
+                    source: "rsvp",
+                    rsvped_at: "2026-06-01T00:00:00Z",
+                    checked_in_at: null,
+                    created_at: "2026-06-01T00:00:00Z",
+                    students: { id: "s", name: "A", member_id: "BIA-1" },
+                  },
                 ],
                 error: null,
               }),
