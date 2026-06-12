@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { requireRoleMock, fromMock, capMock } = vi.hoisted(() => ({
+const { requireRoleMock, fromMock, capMock, auditMock } = vi.hoisted(() => ({
   requireRoleMock: vi.fn(),
   fromMock: vi.fn(),
   capMock: vi.fn(),
+  auditMock: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/require-role", () => ({
@@ -38,7 +39,6 @@ vi.mock("@/lib/marketplace/cap-enforcement", () => ({
   countApprovedSubmissionsThisWeek: capMock,
 }));
 
-const auditMock = vi.fn();
 vi.mock("@/lib/admin/audit-log", () => ({ writeAudit: auditMock }));
 
 import { POST } from "../route";

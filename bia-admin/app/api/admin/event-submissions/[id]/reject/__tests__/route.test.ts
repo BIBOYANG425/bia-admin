@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { requireRoleMock, fromMock } = vi.hoisted(() => ({
+const { requireRoleMock, fromMock, auditMock } = vi.hoisted(() => ({
   requireRoleMock: vi.fn(),
   fromMock: vi.fn(),
+  auditMock: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/require-role", () => ({
@@ -32,7 +33,6 @@ vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
   createBiaServiceRoleClient: () => ({ from: fromMock }),
 }));
 
-const auditMock = vi.fn();
 vi.mock("@/lib/admin/audit-log", () => ({ writeAudit: auditMock }));
 
 import { POST } from "../route";
