@@ -1,6 +1,7 @@
 import {
   Boxes,
   Calendar,
+  ClipboardCheck,
   ClipboardList,
   Contact,
   Newspaper,
@@ -41,7 +42,8 @@ export const ADMIN_SECTIONS: AdminSection[] = [
 
   // Phase 2 — disabled placeholders
   { href: "/admin/blog",     label: "Blog",     icon: Newspaper, group: "content",   enabled: true },
-  { href: "/admin/events",   label: "活动",     icon: Calendar,  group: "content",   enabled: true },
+  { href: "/admin/events",      label: "活动",     icon: Calendar,       group: "content",   enabled: true },
+  { href: "/admin/marketplace", label: "活动投稿", icon: ClipboardCheck, group: "content",   enabled: true },
   { href: "/admin/sponsors", label: "Sponsors", icon: Star,      group: "content",   enabled: false, comingIn: "Phase 2" },
   { href: "/admin/squad",    label: "Squad",    icon: Users2,    group: "community", enabled: false, comingIn: "Phase 2" },
 
