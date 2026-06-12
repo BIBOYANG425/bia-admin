@@ -235,12 +235,31 @@ d("matching engine integration", () => {
     expect(got).not.toContain(weak);    // pre-fusion floors
   });
 
-  // Bilingual test uses the real embed function — requires OPENAI_API_KEY + deployed embed.
-  // Skipped here because OPENAI_API_KEY is not yet available (spec §11 embed-unavailable fallback).
-  it.skip("BILINGUAL + rank order: 韩烤 post ranks the korean-food user above an unrelated one (board direction) — pending OPENAI_API_KEY", async () => {
-    // This test is intentionally left as a stub.
-    // Once OPENAI_API_KEY is added to .env.local and the embed Edge Function is deployed,
-    // remove the .skip and the mkStudentFakeVec / mkPostFakeVec calls should be replaced
-    // with the original plan's mkStudent / mkPost helpers that call makeEmbedClient().
-  });
+  // Bilingual test uses the REAL embed function (OPENAI_API_KEY + deployed embed required).
+  // Fixture design: zero tag overlap and no lexical match between the user's tags and the
+  // posts' content/tags — so the tag and fts legs are silent and ONLY the semantic leg can
+  // produce the ranking. This is the cross-language property the multilingual model was
+  // chosen for (spec §6.4).
+  it("BILINGUAL + rank order: 韩烤 post ranks the korean-food user's board above an unrelated post (semantic leg only)", async () => {
+    const { makeEmbedClient } = await import("../embed-client");
+    const embed = makeEmbedClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"));
+
+    const [userVec, kpostVec, runVec] = await embed([
+      "korean bbq, kbbq, 韩式烤肉 — loves korean barbecue nights",
+      "其它: 周五晚去吃韩烤 有人吗",
+      "其它: saturday morning trail running crew",
+    ]);
+
+    const lily = await mkStudentFakeVec("itest-lily-bilingual", ["korean_food"],
+      [{ label: "korean_food", vec: userVec }], true);
+    const kpost = await mkPostFakeVec("周五晚去吃韩烤 有人吗", ["food"], kpostVec);
+    const other = await mkPostFakeVec("saturday morning trail running crew", ["running"], runVec);
+
+    const { data, error } = await admin.rpc("hybrid_search_posts_for_user", { p_student_id: lily });
+    expect(error).toBeNull();
+    const ranked = ((data as { post_id: string }[]) ?? []).map((r) => r.post_id);
+    expect(ranked).toContain(kpost);
+    const otherIdx = ranked.indexOf(other);
+    expect(ranked.indexOf(kpost)).toBeLessThan(otherIdx === -1 ? Infinity : otherIdx);
+  }, 30_000);
 });
