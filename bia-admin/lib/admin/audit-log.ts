@@ -3,7 +3,7 @@ import { createBiaServiceRoleClient } from "@biboyang425/bia-shared";
 export interface AuditEntry {
   admin_email: string;
   action: string;
-  entity_type: "admin_user" | "admin_invitation" | "article";
+  entity_type: "admin_user" | "admin_invitation" | "article" | "event_submission";
   entity_id?: string | null;
   payload?: Record<string, unknown>;
 }
