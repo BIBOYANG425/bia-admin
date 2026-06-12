@@ -3,7 +3,26 @@
 **Status:** producer applied to Supabase 2026-06-06 (migrations
 `20260606061321_parcel_notification_enqueue` +
 `20260606061351_parcel_notification_enqueue_branch_states`).
-Consumer (george cron) is the remaining work.
+Consumer code complete on george `main`; production deploy pending.
+
+> ⚠️ **Known schema gap — apply the fix NOW, do not wait for george
+> go-live:** the branch-states migration enqueues kinds
+> `lost`/`returned`/`disputed`, but the `kind` CHECK constraint (created
+> inline in bia-roommate `20260419_shipping.sql`) only allows the original
+> 7 kinds. If the 7-kind function body is live, marking a parcel
+> lost/returned/disputed aborts the officer's UPDATE with a check_violation
+> — a **live, officer-facing hard 500 today**, with or without george.
+> Migration `20260611000001_widen_shipping_notification_kinds.sql` widens
+> the CHECK and self-asserts its post-conditions; apply it (and run its
+> verification SQL) immediately. It is decoupled from the george deploy
+> steps below — those gate the consumer, not this fix.
+
+> ⚠️ **Do NOT apply the bia-roommate copy of
+> `20260606_parcel_notification_enqueue.sql` now.** That copy has the older
+> 4-kind function body (no lost/returned/disputed). Because it uses
+> `CREATE OR REPLACE FUNCTION`, applying it would silently downgrade the
+> live 7-kind producer back to 4 kinds. The producer's source of truth is
+> `bia-admin/supabase/migrations/` only.
 
 **Owners:**
 - Producer: lives in `bia-admin/supabase/migrations/`. Source of truth.
@@ -31,52 +50,81 @@ The `expected` status does not enqueue. Status reversions (e.g. `in_transit`
 (parcel, kind) — never duplicated, but the lifecycle can produce all 7
 kinds for the same parcel if it really takes that journey.
 
-## What george needs to do
+## What george actually does (shipped consumer behavior)
 
-Every 5 minutes, run this loop:
+Implemented in `george/src/jobs/shipping-notifier.ts` +
+`george/src/db/shipping-notifications.ts`. Per cron tick:
 
-1. **Claim a batch.** `UPDATE shipping_notifications SET status='sending'
-   WHERE id IN (SELECT id FROM shipping_notifications WHERE status='pending'
-   AND scheduled_for <= now() ORDER BY scheduled_for ASC LIMIT 50 FOR
-   UPDATE SKIP LOCKED) RETURNING *;`
-2. For each claimed row, **apply the safety filters** (below). If a filter
-   skips it, set `status='skipped'` and `error='<reason>'`.
-3. Resolve the student's WeChat openid by joining `students` on
-   `student_id`. If no openid, mark `status='no_openid'` and continue.
-4. **Look up parcel description** for the message body (`parcels.description`,
-   `parcels.shipping_method`).
-5. **Render the message** using the templates below.
-6. **Send via the existing WeChat customer-service channel.** Same code path
-   george already uses for other notifications.
-7. On success: `UPDATE shipping_notifications SET status='sent',
-   sent_at=now() WHERE id=$1`. On failure: `status='failed', error=$err`,
-   leave for retry by next tick (george should cap retries at 3 then mark
-   `dead`).
+1. **Read a batch (no claim step).** Select up to 100 rows with
+   `status='pending' AND scheduled_for <= now()`, ordered by `scheduled_for`,
+   joining `students` for the delivery platform id. There is no intermediate
+   "claiming" status — the `status` CHECK only allows
+   `pending / sent / failed / skipped`.
+2. **Resolve copy by kind.** Static bilingual copy lives in the job's
+   `MESSAGES` map. ⚠️ As of 2026-06-11 it only covers the 4 happy-path kinds
+   (`received_cn`, `in_transit`, `arrived_us`, `picked_up_thanks`);
+   `lost`/`returned`/`disputed` rows get `status='skipped'`,
+   `error='no_copy_for_kind'`.
+3. **Resolve the platform.** Prefer `students.wechat_open_id` (WeChat
+   customer-service message), else `students.imessage_id`. Missing student →
+   `skipped` / `no_student`; no platform id → `skipped` / `no_platform_id`.
+   (There is no `no_openid` status — it is not in the status CHECK.)
+4. **Send once via `sendPlatformMessage`** (same path as reminder-sender).
+   Success → `status='sent'`, `sent_at=now()`. Any send error →
+   `status='failed'`, `error=<message>` — **terminal**. Single attempt, no
+   retry, no retry counter, no `dead` status.
 
-## Safety filters (apply in order)
+### ⚠️ 未实现 — claim protocol (future schema change)
 
-1. **Per-user daily cap.** If the student has 10 sent notifications in
-   the trailing 24h, skip with reason `daily_cap`. Backed by a count
-   on `shipping_notifications` where `status='sent'` and
+An earlier draft of this runbook specified a claim step
+(`SET status='sending' ... FOR UPDATE SKIP LOCKED`) plus a `no_openid`
+status and a retry-cap-3 → `dead` flow. **None of that is implementable
+against the current schema**: the `status` CHECK constraint allows only
+`pending / sent / failed / skipped`, and there is no retry-count column.
+Treat claim/lease semantics, retries, and a dead-letter status as a future
+schema change (widen the status CHECK + add `retry_count`), not as current
+behavior. Until then george must run as a single instance (no SKIP LOCKED
+concurrency protection).
+
+## Safety filters — planned, ⚠️ 未实现
+
+**As of 2026-06-11 NONE of these filters exist in george's code.** The
+shipped consumer sends every pending row that has copy and a platform id.
+Each item below is a design spec for future work, not current behavior —
+do not assume any of them protects production.
+
+1. ⚠️ 未实现 — **Per-user daily cap.** If the student has 10 sent
+   notifications in the trailing 24h, skip with reason `daily_cap`. Backed
+   by a count on `shipping_notifications` where `status='sent'` and
    `sent_at > now() - interval '24 hours'`.
-2. **Quiet hours.** If current time in Los Angeles is 23:00–08:00, defer:
-   `UPDATE shipping_notifications SET scheduled_for = (next 08:00 PT)
-   WHERE id=$1`. Do NOT mark sent.
-3. **Branch-state delay.** If `kind IN ('lost','returned','disputed')` and
-   the row was enqueued less than 15 minutes ago, skip this tick (leaves
-   `status='sending'` → flip back to `pending` for next tick) so an
-   officer can intercept manually. (Implementation note: easier to add a
-   `delay_until` check on the *first* sweep — if branch-state, set
-   `scheduled_for = created_at + interval '15 minutes'` before flipping
-   to `sending` next time.)
-4. **Opt-out.** If `students.parcel_notifications_opted_out = true`, skip
-   with reason `opted_out`.
-5. **48h freshness.** WeChat 客服消息 only works for users active in the
-   past 48h. Check `students.last_wechat_interaction_at`. If older, skip
-   with reason `wechat_stale_48h`. (These will be covered by template
+2. ⚠️ 未实现 — **Quiet hours.** If current time in Los Angeles is
+   23:00–08:00, defer: `UPDATE shipping_notifications SET scheduled_for =
+   (next 08:00 PT) WHERE id=$1`. Do NOT mark sent.
+3. ⚠️ 未实现 — **Branch-state delay.** If `kind IN
+   ('lost','returned','disputed')`, hold the row ~15 minutes after enqueue
+   so an officer can intercept manually (e.g. set
+   `scheduled_for = created_at + interval '15 minutes'` on first sweep).
+   Today these kinds are skipped anyway (`no_copy_for_kind`), so the delay
+   must land together with their copy.
+4. ⚠️ 未实现 — **Opt-out.** If `students.parcel_notifications_opted_out =
+   true`, skip with reason `opted_out`. (Column does not exist yet either —
+   see Opt-out implementation below.)
+5. ⚠️ 未实现 — **48h freshness.** WeChat 客服消息 only works for users
+   active in the past 48h. Check `students.last_wechat_interaction_at`; if
+   older, skip with reason `wechat_stale_48h`. (Covered by template
    messages in Phase 1b / handoff #6.)
 
+Likewise, retry-with-cap (3 attempts then `dead`) is ⚠️ 未实现 — see the
+claim-protocol note above; today a failed send is terminal `failed`.
+
 ## Copy templates (bilingual)
+
+> Note: these are the **target** templates. The shipped consumer currently
+> uses shorter static one-liners (the `MESSAGES` map in
+> `george/src/jobs/shipping-notifier.ts`) with no `{description}`/`{method}`
+> interpolation, and has no copy at all for `lost`/`returned`/`disputed`.
+> The "(branch state, 15 min delay)" labels below refer to safety filter #3,
+> which is ⚠️ 未实现.
 
 Variables: `{description}` from `parcels.description`,
 `{method}` from `SHIPPING_METHOD_META[parcels.shipping_method].label`.
@@ -182,15 +230,58 @@ recommend doing that in the same PR that lands these runbook docs.
 
 ## Deploy steps (Bobby)
 
-1. **Add the opt-out column** by applying a follow-up migration (call it
+1. **FIRST: triage the pending backlog before george ever starts against
+   prod.** The producer trigger has been live since 2026-06-06, so
+   `shipping_notifications` has been silently accumulating `pending` rows
+   with no consumer. The moment george's cron starts, it will try to send
+   ALL of them — days-old status updates would blast students at once.
+   Inspect, then mark everything stale as `skipped`:
+
+   ```sql
+   -- Inspect: what has piled up since 2026-06-06?
+   SELECT kind, status, count(*),
+          min(created_at) AS oldest, max(created_at) AS newest
+   FROM public.shipping_notifications
+   GROUP BY 1, 2
+   ORDER BY 1, 2;
+
+   -- Inspect: the exact pending rows george would send on its first tick
+   SELECT id, kind, student_id, parcel_id, created_at, scheduled_for
+   FROM public.shipping_notifications
+   WHERE status = 'pending' AND scheduled_for <= now()
+   ORDER BY created_at ASC;
+
+   -- Purge: mark stale pre-go-live rows skipped (pick the cutoff
+   -- deliberately — usually "everything created before the moment you
+   -- deploy"). Additive status flip; no rows deleted.
+   UPDATE public.shipping_notifications
+   SET status = 'skipped', error = 'stale_backlog_pre_go_live'
+   WHERE status = 'pending'
+     AND created_at < '<go-live cutoff, e.g. 2026-06-11T00:00:00Z>';
+   ```
+
+   > ⚠️ **Skipping is PERMANENT per (parcel, kind), not a deferral.** The
+   > producer dedupes on `dedup_key = '<parcel_id>:<kind>'` with
+   > `ON CONFLICT DO NOTHING`, and the skipped row keeps its `dedup_key` —
+   > so the trigger will never enqueue that (parcel, kind) again, and
+   > george never re-reads non-`pending` rows. A parcel whose `arrived_us`
+   > row you skip will never get an `arrived_us` notification unless you
+   > manually flip that row back to `pending`. Choose the cutoff knowing it
+   > **suppresses** those notifications forever, not postpones them.
+
+2. **Confirm `20260611000001_widen_shipping_notification_kinds.sql` is
+   already applied** (and run its verification SQL). This migration is NOT
+   gated on the george deploy — it fixes a live officer-facing 500 (see the
+   warning at the top) and should have been applied the moment it merged.
+3. **Add the opt-out column** by applying a follow-up migration (call it
    `20260606_students_parcel_opt_out.sql`). Until then, george should
    treat the opt-out filter as a no-op (always-`false` fallback).
-2. **Pull `BIBOYANG425/george` `main`** and confirm the parcel
+4. **Pull `BIBOYANG425/george` `main`** and confirm the parcel
    notification cron is implemented. Spec is this file.
-3. **Set env vars on george** (none new required if it already has
+5. **Set env vars on george** (none new required if it already has
    `SUPABASE_SERVICE_ROLE_KEY` and the WeChat OA credentials).
-4. **Redeploy george** the usual way (Docker image rebuild + restart).
-5. **Verify** (see below).
+6. **Redeploy george** the usual way (Docker image rebuild + restart).
+7. **Verify** (see below).
 
 ## Verification
 
