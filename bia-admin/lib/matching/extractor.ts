@@ -74,12 +74,21 @@ export async function extractInterests(
   if (!Array.isArray(parsed.tags) || !Array.isArray(parsed.facets)) {
     throw new Error("extractor_parse_failed");
   }
-  const tags = (parsed.tags as string[])
+  // LLM output is untrusted: coerce element shapes (drop non-strings) before
+  // normalizing, and dedupe facet labels — duplicate labels in one batch would
+  // violate the (student_id, label) upsert conflict target downstream.
+  const tags = (parsed.tags as unknown[])
+    .filter((t): t is string => typeof t === "string")
     .map(normalizeTag)
     .filter((t) => t.length > 1 && !NON_INTEREST.test(t.replace(/_/g, " ")));
-  const facets = (parsed.facets as { label: string; text: string }[])
-    .filter((f) => f?.label && f?.text && !NON_INTEREST.test(f.text))
-    .slice(0, FACET_CAP)
-    .map((f) => ({ label: normalizeTag(f.label), text: f.text }));
+  const seenLabels = new Set<string>();
+  const facets = (parsed.facets as unknown[])
+    .filter((f): f is { label: string; text: string } =>
+      !!f && typeof (f as { label?: unknown }).label === "string" &&
+      typeof (f as { text?: unknown }).text === "string")
+    .filter((f) => f.label.trim() && f.text.trim() && !NON_INTEREST.test(f.text))
+    .map((f) => ({ label: normalizeTag(f.label), text: f.text }))
+    .filter((f) => f.label.length > 0 && !seenLabels.has(f.label) && seenLabels.add(f.label) !== undefined)
+    .slice(0, FACET_CAP);
   return { tags: [...new Set(tags)], facets };
 }

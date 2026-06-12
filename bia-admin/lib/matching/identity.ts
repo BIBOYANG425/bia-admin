@@ -33,7 +33,13 @@ export async function resolveStudentId(admin: SupabaseClient, ref: IdentityRef):
       .insert({ user_id: ref.authUserId, name })
       .select()
       .single();
-    if (insErr) throw new Error(`JIT student create failed: ${insErr.message}`);
+    if (insErr) {
+      // Race guard: a concurrent call may have won the check-then-insert window.
+      // The partial unique index students_user_id_uidx turns that into a 23505;
+      // the row exists now, so re-lookup instead of failing.
+      if (insErr.code === "23505") return lookup(admin, "user_id", ref.authUserId);
+      throw new Error(`JIT student create failed: ${insErr.message}`);
+    }
     return created.id as string;
   }
   return null;

@@ -39,7 +39,22 @@ Deno.serve(async (req) => {
       { status: 502 },
     );
   }
-  const data = await res.json();
-  const embeddings = data.data.map((d: { embedding: number[] }) => d.embedding);
+  // Validate upstream shape before returning — a malformed 200 must surface as
+  // upstream_failed (callers' fallback path), never as a crash or corrupt vectors.
+  const data = await res.json().catch(() => null);
+  const items = data?.data;
+  if (
+    !Array.isArray(items) ||
+    items.length !== input.length ||
+    !items.every((d: { embedding?: unknown }) =>
+      Array.isArray(d?.embedding) && d.embedding.length === 1536 &&
+      d.embedding.every((n: unknown) => typeof n === "number"))
+  ) {
+    return Response.json(
+      { error: "upstream_failed", detail: "malformed embedding payload" },
+      { status: 502 },
+    );
+  }
+  const embeddings = items.map((d: { embedding: number[] }) => d.embedding);
   return Response.json({ model: MODEL, dim: 1536, embeddings });
 });

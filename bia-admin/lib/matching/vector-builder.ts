@@ -21,6 +21,13 @@ export async function buildUserVectors(
   if (tagErr) throw new Error(`tag write failed: ${tagErr.message}`);
 
   if (extracted.facets.length === 0) {
+    // Facet set emptied — prune ALL old vectors, or the student keeps matching
+    // on interests they no longer have.
+    const { error: clearErr } = await admin
+      .from("user_interest_vectors")
+      .delete()
+      .eq("student_id", studentId);
+    if (clearErr) throw new Error(`stale prune failed: ${clearErr.message}`);
     return { studentId, tags: extracted.tags.length, facets: 0, embedded: false };
   }
 
