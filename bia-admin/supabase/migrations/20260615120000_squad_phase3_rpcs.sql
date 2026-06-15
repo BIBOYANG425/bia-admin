@@ -145,3 +145,91 @@ grant execute on function public.squad_my_posts() to authenticated, service_role
 grant execute on function public.squad_my_joined() to authenticated, service_role;
 grant execute on function public.squad_my_prefs() to authenticated, service_role;
 grant execute on function public.squad_my_signals() to authenticated, service_role;
+
+-- 6) Respond to MY ping only; a single response is final.
+create or replace function public.squad_respond_to_ping(p_ping_id uuid, p_response text)
+returns void
+language plpgsql security definer set search_path = public as $$
+declare v_student uuid := squad_resolve_me();
+  v_owner uuid; v_existing text;
+begin
+  if p_response not in ('joined','declined') then
+    raise exception 'invalid_response' using errcode = '22023';
+  end if;
+  select recipient_student_id, response into v_owner, v_existing
+    from squad_pings where id = p_ping_id;
+  if v_owner is null then raise exception 'ping_not_found' using errcode = 'P0002'; end if;
+  if v_owner <> v_student then raise exception 'not_your_ping' using errcode = '42501'; end if;
+  if v_existing is not null then raise exception 'already_responded' using errcode = 'P0001'; end if;
+  update squad_pings set response = p_response, responded_at = now() where id = p_ping_id;
+end;
+$$;
+
+-- 7) Upsert my receiving prefs (re-validate the CHECK ranges defensively).
+create or replace function public.squad_set_prefs(
+  p_pings_enabled boolean, p_allowed_categories text[], p_weekly_cap int,
+  p_quiet_start smallint, p_quiet_end smallint, p_channel text)
+returns public.user_match_prefs
+language plpgsql security definer set search_path = public as $$
+declare v_student uuid := squad_resolve_me();
+  v_row public.user_match_prefs;
+begin
+  if p_weekly_cap < 0 then raise exception 'invalid_cap' using errcode = '22023'; end if;
+  if p_quiet_start < 0 or p_quiet_start > 23 or p_quiet_end < 0 or p_quiet_end > 23 then
+    raise exception 'invalid_quiet_hours' using errcode = '22023'; end if;
+  if p_channel not in ('imessage','web','email') then
+    raise exception 'invalid_channel' using errcode = '22023'; end if;
+  insert into user_match_prefs (student_id, pings_enabled, allowed_categories,
+      weekly_ping_cap, quiet_start_hour, quiet_end_hour, channel, updated_at)
+    values (v_student, p_pings_enabled, p_allowed_categories, p_weekly_cap,
+      p_quiet_start, p_quiet_end, p_channel, now())
+    on conflict (student_id) do update set
+      pings_enabled = excluded.pings_enabled,
+      allowed_categories = excluded.allowed_categories,
+      weekly_ping_cap = excluded.weekly_ping_cap,
+      quiet_start_hour = excluded.quiet_start_hour,
+      quiet_end_hour = excluded.quiet_end_hour,
+      channel = excluded.channel,
+      updated_at = now()
+    returning * into v_row;
+  return v_row;
+end;
+$$;
+
+-- 8a) Remove an interest signal (cheap; no embedding).
+create or replace function public.squad_remove_interest(p_tag text)
+returns void
+language plpgsql security definer set search_path = public as $$
+declare v_student uuid := squad_resolve_me();
+begin
+  update students set interest_tags = array_remove(interest_tags, p_tag) where id = v_student;
+  delete from user_interest_vectors where student_id = v_student and label = p_tag;
+end;
+$$;
+
+-- 8b) Add an interest signal. Tag is ALWAYS added (tag-overlap leg). The facet vector
+-- is best-effort: only written when the caller supplies one (embed never blocks).
+create or replace function public.squad_add_interest(p_tag text, p_vector float8[] default null)
+returns void
+language plpgsql security definer set search_path = public as $$
+declare v_student uuid := squad_resolve_me();
+begin
+  update students set interest_tags =
+    (select array(select distinct unnest(coalesce(interest_tags,'{}') || array[p_tag])))
+    where id = v_student;
+  if p_vector is not null and array_length(p_vector, 1) = 1536 then
+    insert into user_interest_vectors (student_id, label, vector, source, updated_at)
+    values (v_student, p_tag, ('[' || array_to_string(p_vector, ',') || ']')::vector, 'web', now())
+    on conflict (student_id, label) do update set vector = excluded.vector, updated_at = now();
+  end if;
+end;
+$$;
+
+revoke all on function public.squad_respond_to_ping(uuid, text) from public, anon;
+revoke all on function public.squad_set_prefs(boolean, text[], int, smallint, smallint, text) from public, anon;
+revoke all on function public.squad_remove_interest(text) from public, anon;
+revoke all on function public.squad_add_interest(text, float8[]) from public, anon;
+grant execute on function public.squad_respond_to_ping(uuid, text) to authenticated, service_role;
+grant execute on function public.squad_set_prefs(boolean, text[], int, smallint, smallint, text) to authenticated, service_role;
+grant execute on function public.squad_remove_interest(text) to authenticated, service_role;
+grant execute on function public.squad_add_interest(text, float8[]) to authenticated, service_role;
