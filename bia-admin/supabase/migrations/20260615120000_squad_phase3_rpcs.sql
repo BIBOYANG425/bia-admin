@@ -156,12 +156,22 @@ begin
   if p_response not in ('joined','declined') then
     raise exception 'invalid_response' using errcode = '22023';
   end if;
+  -- Atomic claim: only an unanswered ping that belongs to me gets written. This
+  -- closes the check-then-update race — a concurrent second call finds response
+  -- already set and updates 0 rows.
+  update squad_pings
+     set response = p_response, responded_at = now()
+   where id = p_ping_id
+     and recipient_student_id = v_student
+     and response is null;
+  if found then return; end if;
+  -- Nothing updated — disambiguate why, for a precise error.
   select recipient_student_id, response into v_owner, v_existing
     from squad_pings where id = p_ping_id;
-  if v_owner is null then raise exception 'ping_not_found' using errcode = 'P0002'; end if;
+  if not found then raise exception 'ping_not_found' using errcode = 'P0002'; end if;
   if v_owner <> v_student then raise exception 'not_your_ping' using errcode = '42501'; end if;
   if v_existing is not null then raise exception 'already_responded' using errcode = 'P0001'; end if;
-  update squad_pings set response = p_response, responded_at = now() where id = p_ping_id;
+  raise exception 'respond_failed' using errcode = 'P0001';
 end;
 $$;
 
