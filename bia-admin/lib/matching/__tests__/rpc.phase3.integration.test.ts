@@ -60,6 +60,7 @@ async function mkPing(postId: string, recipient: string): Promise<string> {
 }
 
 beforeAll(() => {
+  if (!RUN) return; // file-level hook runs even when the suite is skipped; don't touch env()
   admin = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"));
 });
 
@@ -132,12 +133,19 @@ d("squad phase 3 RPCs", () => {
 
   it("add/remove interest mutates only the caller's signals", async () => {
     const a = await authed();
+    const b = await authed(); // a second user to prove cross-user isolation
     await a.client.rpc("squad_add_interest", { p_tag: "kbbq", p_vector: null });
     const { data: sig } = await a.client.rpc("squad_my_signals");
     expect(sig[0].interest_tags).toContain("kbbq");
+    // b never added kbbq — a's mutation must not leak into b's signals.
+    const { data: bSig } = await b.client.rpc("squad_my_signals");
+    expect(bSig[0].interest_tags).not.toContain("kbbq");
     await a.client.rpc("squad_remove_interest", { p_tag: "kbbq" });
     const { data: sig2 } = await a.client.rpc("squad_my_signals");
     expect(sig2[0].interest_tags).not.toContain("kbbq");
+    // b still unaffected after a's remove.
+    const { data: bSig2 } = await b.client.rpc("squad_my_signals");
+    expect(bSig2[0].interest_tags).not.toContain("kbbq");
   });
 
   it("INVARIANT anon: anonymous callers cannot execute the self-scoped RPCs", async () => {

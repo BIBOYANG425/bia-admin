@@ -43,7 +43,7 @@ returns table (
   score double precision, response text, responded_at timestamptz,
   created_at timestamptz, matched_tags text[], best_facet text
 )
-language plpgsql stable security definer set search_path = public as $$
+language plpgsql security definer set search_path = public as $$
 declare v_student uuid := squad_resolve_me();
 begin
   -- `status` is the POST's derived status (open/full/expired/closed) from
@@ -70,7 +70,7 @@ returns table (
   post_id uuid, category text, content text, location text, status text,
   current_people int, max_people int, created_at timestamptz, reach_count bigint
 )
-language plpgsql stable security definer set search_path = public as $$
+language plpgsql security definer set search_path = public as $$
 declare v_student uuid := squad_resolve_me();
 begin
   return query
@@ -89,7 +89,7 @@ returns table (
   post_id uuid, category text, content text, location text, status text,
   current_people int, max_people int, created_at timestamptz
 )
-language plpgsql stable security definer set search_path = public as $$
+language plpgsql security definer set search_path = public as $$
 declare v_student uuid := squad_resolve_me();
 begin
   return query
@@ -122,7 +122,7 @@ $$;
 -- 5) 匹配依据: whitelisted signals only (interest_tags + facet labels). No memory blocks.
 create or replace function public.squad_my_signals()
 returns table (interest_tags text[], facets json)
-language plpgsql stable security definer set search_path = public as $$
+language plpgsql security definer set search_path = public as $$
 declare v_student uuid := squad_resolve_me();
 begin
   return query
@@ -227,7 +227,10 @@ begin
   update students set interest_tags =
     (select array(select distinct unnest(coalesce(interest_tags,'{}') || array[p_tag])))
     where id = v_student;
-  if p_vector is not null and array_length(p_vector, 1) = 1536 then
+  -- Reject vectors that aren't exactly 1536 NON-NULL elements: array_to_string drops
+  -- NULLs, so a NULL-containing array would cast to a <1536-dim vector and fail.
+  if p_vector is not null and array_length(p_vector, 1) = 1536
+     and cardinality(array_remove(p_vector, null)) = 1536 then
     insert into user_interest_vectors (student_id, label, vector, source, updated_at)
     values (v_student, p_tag, ('[' || array_to_string(p_vector, ',') || ']')::vector, 'web', now())
     on conflict (student_id, label) do update set vector = excluded.vector, updated_at = now();
