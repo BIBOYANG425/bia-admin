@@ -43,9 +43,11 @@ returns table (
   score double precision, response text, responded_at timestamptz,
   created_at timestamptz, matched_tags text[], best_facet text
 )
-language plpgsql security definer set search_path = public as $$
+language plpgsql stable security definer set search_path = public as $$
 declare v_student uuid := squad_resolve_me();
 begin
+  -- `status` is the POST's derived status (open/full/expired/closed) from
+  -- squad_posts_with_status; the ping's delivery status is always 'sent' here (filtered below).
   return query
   select sp.id, sp.post_id, ps.category, ps.content, ps.location, ps.poster_name,
          ps.current_people, ps.max_people, ps.status, sp.score, sp.response,
@@ -68,7 +70,7 @@ returns table (
   post_id uuid, category text, content text, location text, status text,
   current_people int, max_people int, created_at timestamptz, reach_count bigint
 )
-language plpgsql security definer set search_path = public as $$
+language plpgsql stable security definer set search_path = public as $$
 declare v_student uuid := squad_resolve_me();
 begin
   return query
@@ -87,7 +89,7 @@ returns table (
   post_id uuid, category text, content text, location text, status text,
   current_people int, max_people int, created_at timestamptz
 )
-language plpgsql security definer set search_path = public as $$
+language plpgsql stable security definer set search_path = public as $$
 declare v_student uuid := squad_resolve_me();
 begin
   return query
@@ -120,7 +122,7 @@ $$;
 -- 5) 匹配依据: whitelisted signals only (interest_tags + facet labels). No memory blocks.
 create or replace function public.squad_my_signals()
 returns table (interest_tags text[], facets json)
-language plpgsql security definer set search_path = public as $$
+language plpgsql stable security definer set search_path = public as $$
 declare v_student uuid := squad_resolve_me();
 begin
   return query
