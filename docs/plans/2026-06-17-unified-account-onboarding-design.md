@@ -4,7 +4,7 @@ Date: 2026-06-17
 Status: In progress on `feat/unified-account-onboarding` — Phase 1 verified (no migration
 needed, §7); Phase 2 bia-shared contract landed (`packages/bia-shared/src/students`, v0.4.0).
 George refactor + web work pending.
-Scope: cross-repo — bia-admin (schema + bia-shared), george-extract (agent), bia-roommate (web)
+Scope: cross-repo — bia-admin (schema + bia-shared), george (agent), bia-roommate (web)
 
 ## The problem (current state)
 
@@ -15,7 +15,7 @@ uses it**; there is no student web login and no shared onboarding contract:
 | Silo | Repo / surface | Keyed by | Login | Onboarding |
 |---|---|---|---|---|
 | `admin_users` | bia-admin / admin.uscbia.com | `auth.users.id` + email (Google OAuth) | officers only | none (invite → role) |
-| `students` | george-extract (iMessage/WeChat) + web | `wechat_open_id` / `imessage_id` / **`user_id`→auth.users** | chat (web login not built) | the only real onboarding |
+| `students` | george (iMessage/WeChat) + web | `wechat_open_id` / `imessage_id` / **`user_id`→auth.users** | chat (web login not built) | the only real onboarding |
 | `roommate_profiles` | bia-roommate / uscbia.com `/submit` | nothing (anonymous) | none | single form |
 
 `admin_users` is shown for context only — it is **not** a unification target (see
@@ -31,7 +31,7 @@ Consequences:
   (`001_george_schema.sql` lacks this column; it was added to the baseline by the uscbia.com
   schema, which is why the first investigation pass missed it.)
 - **No shared contract.** The onboarding field set lives only inside George's prompts
-  (`george-extract/src/agent/personality.ts:594-636`). `bia-shared` exports only
+  (`george/src/agent/personality.ts:594-636`). `bia-shared` exports only
   `AdminUser`, `AdminInvitation`, `Article` — no `Student` / onboarding type. Any web
   onboarding would drift from George's on day one.
 
@@ -105,14 +105,14 @@ users route already joins it that way). The account is keyed by **any** of `user
 `imessage_id`, `wechat_open_id` today.
 
 What's missing is the web side that populates `user_id`: mirror the existing chat
-resolve-or-create (`george-extract/src/db/students.ts:15-52`) for web — on first
+resolve-or-create (`george/src/db/students.ts:15-52`) for web — on first
 authenticated web request, find the row by `user_id`; if absent, create one (server-side /
 service role, race-safe via the unique index), exactly as George does for chat handles.
 
 ## 2. The web↔George handshake (extend `link_code`, don't reinvent)
 
 George already has the merge primitive: `generateLinkCode` /`claimLinkCode`
-(`george-extract/src/db/students.ts:54-107`). A 6-digit, 10-minute code generated on
+(`george/src/db/students.ts:54-107`). A 6-digit, 10-minute code generated on
 platform A is typed on platform B; the two rows merge (identity column copied to the
 target, messages reassigned, claimer row deleted).
 
@@ -191,14 +191,14 @@ export function isOnboardingComplete(s: Partial<Student>): boolean {
 
 Completion = **presence of all four fields** (placeholder values like `undecided` /
 `unknown` count), which matches George's `update_profile` behavior today
-(`george-extract/src/tools/update-profile.ts`). George refactors to call
+(`george/src/tools/update-profile.ts`). George refactors to call
 `isOnboardingComplete` instead of its private check. With web onboarding running *as
 George* (§5) there is no second onboarding writer to keep in sync — the contract's job on
 web is the **account page** (the field set, the enums, the "what's left" display) plus the
 shared `Student` type.
 
 bia-shared is consumed by bia-roommate from GitHub Packages; bumping it is the existing
-publish path (`.github/workflows/publish-shared.yml`). george-extract would add the dep
+publish path (`.github/workflows/publish-shared.yml`). george would add the dep
 too (new consumer — see coordination below).
 
 ## 4. The account page (one page, same fields)
@@ -219,7 +219,7 @@ it's one row, a change on either surface is reflected on the other with no sync.
 
 There is exactly **one** onboarding implementation: George's 3-phase conversational flow
 (intro → one question per turn → wrap-up,
-`george-extract/src/agent/personality.ts:567-647`). The web does **not** get a separate
+`george/src/agent/personality.ts:567-647`). The web does **not** get a separate
 form — it renders a **George chat** that runs the identical flow.
 
 - **iMessage / WeChat**: unchanged.
@@ -284,7 +284,7 @@ those four profile columns — never `onboarding_complete`, `member_id`, or `use
 | Repo | Change |
 |---|---|
 | **bia-admin** | Owns the schema — the identity foundation is already in place (§7), so no Phase-1 migration. Add the `Student` / onboarding contract to `bia-shared`, bump + publish. Later phases: the scoped profile-edit RPC (Phase 5) and the `'web'` platform CHECK migration (Phase 4). |
-| **george-extract** | Add `@biboyang425/bia-shared` dep; import the contract; replace private onboarding-complete check; add `'web'` to `claimLinkCode` platform union → `user_id`. |
+| **george** | Add `@biboyang425/bia-shared` dep; import the contract; replace private onboarding-complete check; add `'web'` to `claimLinkCode` platform union → `user_id`. |
 | **bia-roommate** | Add student Supabase auth (OTP + Google OAuth), resolve-or-create `students` by `user_id`, an embedded George chat widget (web platform → george-api) for onboarding, account page, link-code UI. Bump bia-shared dep. |
 
 ## 9. Rollout phases
