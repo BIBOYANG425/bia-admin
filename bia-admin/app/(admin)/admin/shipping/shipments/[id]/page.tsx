@@ -507,13 +507,23 @@ export default function AdminShipmentDetailPage() {
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-semibold">已关联包裹</h2>
-          <Button
-            type="button"
-            variant={showAttach ? "outline" : "secondary"}
-            onClick={() => setShowAttach((v) => !v)}
-          >
-            {showAttach ? "取消" : `+ 关联（${unassigned.length} 待关联）`}
-          </Button>
+          <div className="flex items-center gap-2">
+            {parcels.length > 0 && (
+              <a
+                href={`/api/admin/shipping/shipments/${id}/export`}
+                className="inline-flex h-9 items-center rounded-md border border-input px-3 text-sm font-medium hover:bg-muted"
+              >
+                导出 CSV
+              </a>
+            )}
+            <Button
+              type="button"
+              variant={showAttach ? "outline" : "secondary"}
+              onClick={() => setShowAttach((v) => !v)}
+            >
+              {showAttach ? "取消" : `+ 关联（${unassigned.length} 待关联）`}
+            </Button>
+          </div>
         </div>
 
         {showAttach && (
@@ -528,6 +538,21 @@ export default function AdminShipmentDetailPage() {
                 </p>
               ) : (
                 <>
+                  <label className="flex cursor-pointer items-center gap-2 border-b px-2 py-1 text-xs font-medium hover:bg-muted">
+                    <input
+                      type="checkbox"
+                      checked={
+                        selected.size === unassigned.length &&
+                        unassigned.length > 0
+                      }
+                      onChange={(e) => {
+                        if (e.target.checked)
+                          setSelected(new Set(unassigned.map((p) => p.id)));
+                        else setSelected(new Set());
+                      }}
+                    />
+                    全选 · 已选 {selected.size} / {unassigned.length}
+                  </label>
                   <ul className="max-h-80 space-y-1 overflow-y-auto">
                     {unassigned.map((p) => (
                       <li key={p.id}>

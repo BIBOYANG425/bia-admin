@@ -1,0 +1,106 @@
+// /api/admin/shipping/shipments/[id]/export
+// GET — stream a shipment's parcels as a CSV manifest / 取件清单 (viewer+).
+// Read-only: no mutation, no audit. Uses only existing parcel columns so it
+// needs no migration (amount/paid columns are appended once Phase-4 lands).
+
+import { NextResponse } from "next/server";
+import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
+import {
+  PARCEL_STATUS_META,
+  SHIPPING_METHOD_META,
+  type Parcel,
+  type ParcelStatus,
+  type ShippingMethod,
+} from "@biboyang425/bia-shared/shipping";
+import { withRole } from "@/lib/auth/require-role";
+
+interface RouteContext {
+  params: Promise<{ id: string }>;
+}
+
+// Escape one CSV cell: wrap in quotes, double internal quotes, and neutralize
+// spreadsheet formula-injection by prefixing a leading = + - @ with a quote.
+function csvCell(value: unknown): string {
+  let s = value === null || value === undefined ? "" : String(value);
+  if (/^[=+\-@]/.test(s)) s = `'${s}`;
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
+export async function GET(_request: Request, ctx: RouteContext) {
+  return withRole("viewer", async () => {
+    const { id } = await ctx.params;
+    const admin = createBiaServiceRoleClient();
+
+    const [{ data: shipment, error: sErr }, { data: parcels, error: pErr }] =
+      await Promise.all([
+        admin.from("shipments").select("id, name").eq("id", id).maybeSingle(),
+        admin
+          .from("parcels")
+          .select(
+            "member_id, description, status, weight_grams, shipping_method, tracking_cn, created_at",
+          )
+          .eq("shipment_id", id)
+          .order("member_id", { ascending: true }),
+      ]);
+
+    if (sErr || pErr) {
+      return NextResponse.json(
+        { error: "lookup_failed", details: (sErr ?? pErr)!.message },
+        { status: 500 },
+      );
+    }
+    if (!shipment) {
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
+
+    const header = [
+      "Member ID",
+      "描述",
+      "状态",
+      "重量(g)",
+      "重量(kg)",
+      "运输方式",
+      "国内单号",
+      "创建时间",
+    ];
+
+    const rows = ((parcels ?? []) as Array<
+      Pick<
+        Parcel,
+        | "member_id"
+        | "description"
+        | "status"
+        | "weight_grams"
+        | "shipping_method"
+        | "tracking_cn"
+        | "created_at"
+      >
+    >).map((p) => [
+      p.member_id,
+      p.description,
+      PARCEL_STATUS_META[p.status as ParcelStatus]?.label ?? p.status,
+      p.weight_grams ?? "",
+      p.weight_grams != null ? (p.weight_grams / 1000).toFixed(2) : "",
+      p.shipping_method
+        ? (SHIPPING_METHOD_META[p.shipping_method as ShippingMethod]?.label ??
+          p.shipping_method)
+        : "",
+      p.tracking_cn ?? "",
+      p.created_at,
+    ]);
+
+    // Leading BOM so Excel detects UTF-8 and renders Chinese correctly.
+    const BOM = String.fromCharCode(0xfeff);
+    const csv =
+      BOM + [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n");
+
+    return new NextResponse(csv, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="manifest-${id}.csv"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  });
+}
