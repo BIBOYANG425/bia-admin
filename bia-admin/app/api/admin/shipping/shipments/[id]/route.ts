@@ -8,6 +8,10 @@ import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { SHIPMENT_STATUS_VALUES } from "@biboyang425/bia-shared/shipping";
 import { withRole } from "@/lib/auth/require-role";
+import {
+  enqueueShippingNotifications,
+  type ShippingNotificationRow,
+} from "@/lib/shipping/notify";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -99,6 +103,60 @@ export async function PATCH(request: Request, ctx: RouteContext) {
         { status: 500 },
       );
     }
+
+    // When pickup opens, enqueue pickup_open (+ pickup_reminder) per attached,
+    // arrived parcel/student. App-layer (not a DB trigger) so a notification
+    // hiccup never aborts the officer's shipment update; idempotent via
+    // dedup_key. Nothing is sent here — the (gated) george consumer drains it.
+    if (data.status === "pickup_open" && data.pickup_location && data.pickup_ends_at) {
+      const { data: parcels } = await admin
+        .from("parcels")
+        .select("id, student_id, member_id")
+        .eq("shipment_id", id)
+        .eq("status", "arrived_us")
+        .not("student_id", "is", null);
+
+      const nowMs = Date.now();
+      const nowIso = new Date(nowMs).toISOString();
+      const endsMs = new Date(data.pickup_ends_at).getTime();
+      const reminderAt =
+        Number.isFinite(endsMs) && endsMs > nowMs
+          ? new Date(Math.max(nowMs, endsMs - 24 * 60 * 60 * 1000)).toISOString()
+          : null;
+
+      const rows: ShippingNotificationRow[] = [];
+      for (const p of parcels ?? []) {
+        if (!p.student_id) continue;
+        const payload = {
+          member_id: p.member_id,
+          pickup_location: data.pickup_location,
+          pickup_starts_at: data.pickup_starts_at,
+          pickup_ends_at: data.pickup_ends_at,
+        };
+        rows.push({
+          student_id: p.student_id,
+          parcel_id: p.id,
+          kind: "pickup_open",
+          dedup_key: `${p.id}:pickup_open`,
+          payload,
+          status: "pending",
+          scheduled_for: nowIso,
+        });
+        if (reminderAt) {
+          rows.push({
+            student_id: p.student_id,
+            parcel_id: p.id,
+            kind: "pickup_reminder",
+            dedup_key: `${p.id}:pickup_reminder`,
+            payload,
+            status: "pending",
+            scheduled_for: reminderAt,
+          });
+        }
+      }
+      await enqueueShippingNotifications(admin, rows);
+    }
+
     return NextResponse.json(data);
   });
 }
