@@ -6,6 +6,7 @@ import {
   Contact,
   Newspaper,
   Package,
+  PackagePlus,
   Route,
   Ship,
   Star,
@@ -48,8 +49,9 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { href: "/admin/squad",    label: "Squad",    icon: Users2,    group: "community", enabled: false, comingIn: "Phase 2" },
 
   // Phase 3 — 集运 (live: parity-checked + prod smoke passed 2026-06-05, slice 9)
-  { href: "/admin/shipping/parcels",       label: "集运·包裹", icon: Package,       group: "operations", enabled: true },
-  { href: "/admin/shipping/shipments",     label: "集运·批次", icon: Ship,          group: "operations", enabled: true },
+  { href: "/admin/shipping/parcels",        label: "集运·包裹", icon: Package,      group: "operations", enabled: true },
+  { href: "/admin/shipping/parcels/intake", label: "集运·入库", icon: PackagePlus,  group: "operations", enabled: true },
+  { href: "/admin/shipping/shipments",      label: "集运·批次", icon: Ship,         group: "operations", enabled: true },
   { href: "/admin/shipping/pack-requests", label: "集运·打包", icon: Boxes,         group: "operations", enabled: true },
   { href: "/admin/shipping/requests",      label: "集运·发货", icon: ClipboardList, group: "operations", enabled: true },
   { href: "/admin/shipping/routes",        label: "集运·专线", icon: Route,         group: "operations", enabled: true },
