@@ -1,7 +1,8 @@
 -- Offline (cash / transfer) payment reconciliation bookkeeping on parcels.
 -- (Phase B · M5 · backs the admin roster 已收款 marker + CSV amount column.)
 --
--- ⚠️ DRAFT — NOT YET APPLIED. Apply on a Supabase preview branch first.
+-- ✅ APPLIED to prod 2026-06-21 (via Supabase SQL editor). Idempotent
+-- (CREATE OR REPLACE / ADD COLUMN IF NOT EXISTS) — safe to re-apply for DR/rebuild.
 --
 -- WHY: payment is OFFLINE (no online checkout). Officers need a minimal way to
 -- record "amount owed" and "received money (who/when/how)" per parcel — a

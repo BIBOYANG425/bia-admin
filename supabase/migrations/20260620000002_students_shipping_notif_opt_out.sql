@@ -1,7 +1,8 @@
 -- Per-student opt-out flag for shipping notifications.
 -- (Phase B · M2 · consumed by the george shipping-notifier + "回复 TD 退订".)
 --
--- ⚠️ DRAFT — NOT YET APPLIED. Apply on a Supabase preview branch first.
+-- ✅ APPLIED to prod 2026-06-21 (via Supabase SQL editor). Idempotent
+-- (CREATE OR REPLACE / ADD COLUMN IF NOT EXISTS) — safe to re-apply for DR/rebuild.
 --
 -- WHY: students need a way to stop shipping WeChat/iMessage updates. The
 -- consumer (BIBOYANG425/george) will read this column and mark matching

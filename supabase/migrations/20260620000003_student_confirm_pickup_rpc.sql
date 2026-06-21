@@ -1,7 +1,8 @@
 -- student_confirm_pickup — let a student self-confirm parcel pickup in-app.
 -- (Phase B · M3 · backs the "确认取件" button in bia-roommate.)
 --
--- ⚠️ DRAFT — NOT YET APPLIED. Apply on a Supabase preview branch first.
+-- ✅ APPLIED to prod 2026-06-21 (via Supabase SQL editor). Idempotent
+-- (CREATE OR REPLACE / ADD COLUMN IF NOT EXISTS) — safe to re-apply for DR/rebuild.
 --
 -- WHY: parcels RLS only lets a student UPDATE their own row while
 -- status='expected' (20260419_shipping.sql), so an arrived_us → picked_up

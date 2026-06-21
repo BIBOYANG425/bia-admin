@@ -1,7 +1,8 @@
 -- Per-parcel pickup token + officer scan-to-verify RPC.
 -- (Phase B · M4 · backs the student QR + the admin 扫码核销 scanner.)
 --
--- ⚠️ DRAFT — NOT YET APPLIED. Apply on a Supabase preview branch first.
+-- ✅ APPLIED to prod 2026-06-21 (via Supabase SQL editor). Idempotent
+-- (CREATE OR REPLACE / ADD COLUMN IF NOT EXISTS) — safe to re-apply for DR/rebuild.
 --
 -- WHY: at pickup the student shows a QR encoding parcel_id + pickup_token; the
 -- officer scans it and the parcel is confirmed picked_up with on-site identity
