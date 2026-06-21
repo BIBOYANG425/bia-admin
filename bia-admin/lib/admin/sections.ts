@@ -7,6 +7,7 @@ import {
   Newspaper,
   Package,
   Route,
+  ScanLine,
   Ship,
   Star,
   UserRound,
@@ -54,4 +55,5 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { href: "/admin/shipping/requests",      label: "集运·发货", icon: ClipboardList, group: "operations", enabled: true },
   { href: "/admin/shipping/routes",        label: "集运·专线", icon: Route,         group: "operations", enabled: true },
   { href: "/admin/shipping/contacts",      label: "集运·联系", icon: Contact,       group: "operations", enabled: true },
+  { href: "/admin/shipping/pickup",        label: "集运·核销", icon: ScanLine,      group: "operations", enabled: true },
 ];
