@@ -241,6 +241,14 @@ export interface Parcel {
   notes: string | null;
   user_notes: string | null;
   shipping_method: ShippingMethod | null;
+  /** Per-parcel pickup code (QR + short code) for officer 核销. */
+  pickup_token?: string | null;
+  /** Offline payment reconciliation (officer bookkeeping). Amounts in cents. */
+  amount_owed_cents?: number | null;
+  paid_at?: string | null;
+  paid_by_admin?: string | null;
+  paid_method?: "cash" | "transfer" | "other" | null;
+  paid_note?: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -315,6 +315,12 @@ export default function AdminShipmentDetailPage() {
         <h1 className="mt-1 text-2xl font-bold tracking-tight">
           {shipment.name}
         </h1>
+        <Link
+          href={`/admin/shipping/shipments/${id}/roster`}
+          className="mt-1 inline-block text-sm text-muted-foreground hover:underline"
+        >
+          取件名单 / 收款 →
+        </Link>
       </div>
 
       {/* Progress */}
