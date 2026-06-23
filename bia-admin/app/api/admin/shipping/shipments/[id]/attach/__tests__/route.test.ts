@@ -51,14 +51,17 @@ function req(body: unknown) {
     body: JSON.stringify(body),
   });
 }
-function shipmentExists(exists: boolean) {
+function shipmentExists(exists: boolean, status = "forming") {
   fromMock.mockImplementation((table: string) => {
     if (table === "shipments") {
       return {
         select: () => ({
           eq: () => ({
             maybeSingle: () =>
-              Promise.resolve({ data: exists ? { id: "s1" } : null, error: null }),
+              Promise.resolve({
+                data: exists ? { id: "s1", status } : null,
+                error: null,
+              }),
           }),
         }),
       };
@@ -95,12 +98,28 @@ describe("POST /api/admin/shipping/shipments/[id]/attach", () => {
     rpcMock.mockResolvedValue({ data: 2, error: null });
     const res = await POST(req({ parcel_ids: ["p1", "p2"] }), ctxFor("s1"));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ updated: 2 });
+    expect(await res.json()).toEqual({ updated: 2, skipped: 0 });
     expect(rpcMock).toHaveBeenCalledWith("admin_attach_parcels_to_shipment", {
       p_parcel_ids: ["p1", "p2"],
       p_shipment_id: "s1",
       p_actor_user_id: "admin-7",
     });
+  });
+
+  it("reports parcels the RPC skipped as ineligible (not received_cn)", async () => {
+    shipmentExists(true);
+    rpcMock.mockResolvedValue({ data: 1, error: null }); // 1 of 2 eligible
+    const res = await POST(req({ parcel_ids: ["p1", "p2"] }), ctxFor("s1"));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ updated: 1, skipped: 1 });
+  });
+
+  it("409s when the shipment has already left forming/sealed (no RPC)", async () => {
+    shipmentExists(true, "archived");
+    const res = await POST(req({ parcel_ids: ["p1"] }), ctxFor("s1"));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("shipment_not_attachable");
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 
   it("surfaces an RPC failure as 500", async () => {

@@ -143,6 +143,7 @@ describe("POST /api/admin/shipping/pack-requests/[id]/attach", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       attached: 2,
+      skipped: 0,
       request: { id: "pr1", status: "approved", shipment_id: "s1" },
     });
     expect(rpcMock).toHaveBeenCalledWith("admin_attach_parcels_to_shipment", {
@@ -150,6 +151,30 @@ describe("POST /api/admin/shipping/pack-requests/[id]/attach", () => {
       p_shipment_id: "s1",
       p_actor_user_id: "admin-3",
     });
+  });
+
+  it("reports skipped parcels the RPC found ineligible (not received_cn)", async () => {
+    setup();
+    rpcMock.mockResolvedValue({ data: 1, error: null }); // 1 of 2 eligible
+    const res = await POST(req({ shipment_id: "s1" }), ctxFor("pr1"));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ attached: 1, skipped: 1 });
+  });
+
+  it("409s when the target shipment is past forming/sealed (no RPC)", async () => {
+    setup({ shipment: { id: "s1", status: "departed_cn" } });
+    const res = await POST(req({ shipment_id: "s1" }), ctxFor("pr1"));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("shipment_not_attachable");
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it("409s when the pack request is no longer pending/contacted (no RPC)", async () => {
+    setup({ pack: { id: "pr1", status: "approved" } });
+    const res = await POST(req({ shipment_id: "s1" }), ctxFor("pr1"));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("request_not_attachable");
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 
   it("surfaces an RPC failure as 500 and does not mark approved", async () => {

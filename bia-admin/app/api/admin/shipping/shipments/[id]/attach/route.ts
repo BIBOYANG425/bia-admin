@@ -17,6 +17,9 @@ const AttachBody = z.object({
   parcel_ids: z.array(z.string()).min(1).max(500),
 });
 
+// Only batches that have not yet left China accept new parcels.
+const ATTACHABLE_SHIPMENT_STATUS = new Set(["forming", "sealed"]);
+
 export async function POST(request: Request, ctx: RouteContext) {
   return withRole("editor", async (auth) => {
     const { id } = await ctx.params;
@@ -31,14 +34,20 @@ export async function POST(request: Request, ctx: RouteContext) {
 
     const admin = createBiaServiceRoleClient();
 
-    // Verify the shipment exists before the bulk update.
+    // Verify the shipment exists and still accepts parcels before the update.
     const { data: shipment } = await admin
       .from("shipments")
-      .select("id")
+      .select("id, status")
       .eq("id", id)
       .maybeSingle();
     if (!shipment) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
+    if (!ATTACHABLE_SHIPMENT_STATUS.has(shipment.status as string)) {
+      return NextResponse.json(
+        { error: "shipment_not_attachable", status: shipment.status },
+        { status: 409 },
+      );
     }
 
     const { data, error } = await admin.rpc(
@@ -55,6 +64,12 @@ export async function POST(request: Request, ctx: RouteContext) {
         { status: 500 },
       );
     }
-    return NextResponse.json({ updated: data ?? 0 });
+    // updated < requested means some parcels were not received_cn and the RPC
+    // skipped them (no backward move) — report the skipped count.
+    const updatedCount = (data as number | null) ?? 0;
+    return NextResponse.json({
+      updated: updatedCount,
+      skipped: parsed.data.parcel_ids.length - updatedCount,
+    });
   });
 }
