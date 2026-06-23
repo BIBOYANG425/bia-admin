@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-typecheck-build:
+    name: Lint, Type Check & Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # pnpm version comes from "packageManager": "pnpm@9.0.0" in package.json.
+      # Don't add a `version:` input — action-setup@v4 errors when both are set.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      # @biboyang425/bia-shared resolves via workspace:* — no registry auth needed.
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm -r lint
+
+      - name: Type check bia-admin
+        working-directory: bia-admin
+        run: npx tsc --noEmit
+
+      - name: Type check bia-shared
+        working-directory: packages/bia-shared
+        run: npx tsc --noEmit
+
+      - run: pnpm -r build
+        env:
+          # Placeholder values so `next build` succeeds without secrets.
+          # Real values live in Vercel; runtime code reads env inside factories.
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm -r test
