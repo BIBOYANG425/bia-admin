@@ -134,8 +134,12 @@ export default function AdminPackRequestsPage() {
         showToast(err.error ?? "附加失败", 1800);
         return;
       }
-      const data = (await res.json()) as { attached: number };
-      showToast(`已附加 ${data.attached} 个包裹 · 申请已标记 approved`, 2500);
+      const data = (await res.json()) as { attached: number; skipped?: number };
+      showToast(
+        `已附加 ${data.attached} 个包裹 · 申请已标记 approved` +
+          (data.skipped ? ` · 跳过 ${data.skipped} 个（非「仓库签收」状态）` : ""),
+        2500,
+      );
       setPickedShipment((prev) => {
         const nextState = { ...prev };
         delete nextState[requestId];

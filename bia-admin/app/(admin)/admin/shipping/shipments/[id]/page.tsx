@@ -239,8 +239,11 @@ export default function AdminShipmentDetailPage() {
         setTimeout(() => setToast(null), 1800);
         return;
       }
-      const data = (await res.json()) as { updated: number };
-      setToast(`已附加 ${data.updated} 个`);
+      const data = (await res.json()) as { updated: number; skipped?: number };
+      setToast(
+        `已附加 ${data.updated} 个` +
+          (data.skipped ? `（跳过 ${data.skipped} 个：非「仓库签收」状态）` : ""),
+      );
       setTimeout(() => setToast(null), 1500);
       setSelected(new Set());
       setShowAttach(false);

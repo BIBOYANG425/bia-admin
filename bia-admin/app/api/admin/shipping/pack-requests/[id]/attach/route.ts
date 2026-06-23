@@ -18,6 +18,13 @@ const AttachBody = z.object({
   shipment_id: z.string().min(1),
 });
 
+// Parcels can only be attached to a batch that has not yet left China, and only
+// from a pack request that has not yet been processed. These guards stop a
+// stale/duplicate attach from re-pointing parcels into a sealed-and-gone batch
+// or resurrecting a declined/cancelled/shipped request back to 'approved'.
+const ATTACHABLE_SHIPMENT_STATUS = new Set(["forming", "sealed"]);
+const ATTACHABLE_REQUEST_STATUS = new Set(["pending", "contacted"]);
+
 export async function POST(request: Request, ctx: RouteContext) {
   return withRole("editor", async (auth) => {
     const { id } = await ctx.params;
@@ -45,8 +52,14 @@ export async function POST(request: Request, ctx: RouteContext) {
     if (!shipment) {
       return NextResponse.json({ error: "shipment_not_found" }, { status: 404 });
     }
+    if (!ATTACHABLE_SHIPMENT_STATUS.has(shipment.status as string)) {
+      return NextResponse.json(
+        { error: "shipment_not_attachable", status: shipment.status },
+        { status: 409 },
+      );
+    }
 
-    // Validate pack request exists.
+    // Validate pack request exists and is still in an attachable state.
     const { data: req } = await admin
       .from("pack_requests")
       .select("id, status")
@@ -54,6 +67,12 @@ export async function POST(request: Request, ctx: RouteContext) {
       .maybeSingle();
     if (!req) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
+    if (!ATTACHABLE_REQUEST_STATUS.has(req.status as string)) {
+      return NextResponse.json(
+        { error: "request_not_attachable", status: req.status },
+        { status: 409 },
+      );
     }
 
     const { data: links } = await admin
@@ -93,6 +112,13 @@ export async function POST(request: Request, ctx: RouteContext) {
       );
     }
 
-    return NextResponse.json({ attached: attached ?? 0, request: updated });
+    // attached < parcelIds.length means some parcels were ineligible
+    // (not received_cn) and the RPC skipped them — surface that to the officer.
+    const attachedCount = (attached as number | null) ?? 0;
+    return NextResponse.json({
+      attached: attachedCount,
+      skipped: parcelIds.length - attachedCount,
+      request: updated,
+    });
   });
 }
