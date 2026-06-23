@@ -12,11 +12,39 @@ import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { withRole } from "@/lib/auth/require-role";
 import { logAdminAction } from "@/lib/audit/log";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const Body = z.object({ code: z.string().trim().min(1).max(64) });
 
+// Per-officer throttle. The lookup below matches a code against ANY arrived_us
+// parcel, so without a cap this endpoint is a brute-force oracle for the short
+// pickup code. 30/min is far above real 核销 cadence (each verify is a physical
+// hand-off) but makes guessing the code-space hopeless, and every attempt is
+// already written to the audit log.
+const VERIFY_LIMIT = 30;
+const VERIFY_WINDOW_MS = 60_000;
+
 export async function POST(request: Request) {
   return withRole("editor", async (auth) => {
+    const rl = checkRateLimit(
+      `pickup-verify:${auth.user.id}`,
+      VERIFY_LIMIT,
+      VERIFY_WINDOW_MS,
+    );
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "核销尝试过于频繁，请稍后再试" },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(
+              Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 1000)),
+            ),
+          },
+        },
+      );
+    }
+
     const json = await request.json().catch(() => null);
     const parsed = Body.safeParse(json);
     if (!parsed.success) {
