@@ -1,5 +1,8 @@
 // /api/admin/shipping/pack-requests/[id]
-// PATCH — update status / admin_note / shipment_id (editor+).
+// PATCH — update status / admin_note (editor+). shipment_id is intentionally
+// NOT settable here: associating a request with a shipment must go through the
+// /attach route, which also moves the parcels — setting shipment_id alone left
+// the request pointing at a batch its parcels were never attached to.
 // Ported from bia-roommate (Phase-3 slice 5): adminHandler -> withRole.
 
 import { NextResponse } from "next/server";
@@ -18,7 +21,6 @@ const STATUS_SET = new Set<string>(PACK_REQUEST_STATUS_VALUES);
 const PatchBody = z.object({
   status: z.string().optional(),
   admin_note: z.string().max(2000).nullable().optional(),
-  shipment_id: z.string().nullable().optional(),
 });
 
 export async function PATCH(request: Request, ctx: RouteContext) {
@@ -47,13 +49,6 @@ export async function PATCH(request: Request, ctx: RouteContext) {
           ? body.admin_note.trim() || null
           : null;
     }
-    if (body.shipment_id !== undefined) {
-      patch.shipment_id =
-        typeof body.shipment_id === "string" && body.shipment_id
-          ? body.shipment_id
-          : null;
-    }
-
     if (Object.keys(patch).length === 0) {
       return NextResponse.json({ error: "no_fields" }, { status: 400 });
     }
