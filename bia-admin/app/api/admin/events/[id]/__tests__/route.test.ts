@@ -32,6 +32,10 @@ vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
   createBiaServiceRoleClient: () => ({ from: fromMock }),
 }));
 
+// writeAudit pulls its own service-role client from the package root, so mock
+// the helper directly to keep it a no-op in tests.
+vi.mock("@/lib/admin/audit-log", () => ({ writeAudit: vi.fn() }));
+
 import { GET, PATCH } from "../route";
 
 const editor = {

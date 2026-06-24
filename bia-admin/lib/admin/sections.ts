@@ -9,6 +9,7 @@ import {
   PackagePlus,
   Route,
   ScanLine,
+  ScrollText,
   Ship,
   Star,
   UserRound,
@@ -17,7 +18,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export type AdminGroup = "content" | "community" | "operations" | "people";
+export type AdminGroup =
+  | "content"
+  | "community"
+  | "operations"
+  | "people"
+  | "system";
 
 export interface AdminSection {
   href: string;
@@ -34,6 +40,7 @@ export const ADMIN_GROUPS: Record<AdminGroup, string> = {
   community: "Community",
   operations: "Operations",
   people: "People",
+  system: "System",
 };
 
 export const ADMIN_SECTIONS: AdminSection[] = [
@@ -58,4 +65,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { href: "/admin/shipping/routes",        label: "集运·专线", icon: Route,         group: "operations", enabled: true },
   { href: "/admin/shipping/contacts",      label: "集运·联系", icon: Contact,       group: "operations", enabled: true },
   { href: "/admin/shipping/pickup",        label: "集运·核销", icon: ScanLine,      group: "operations", enabled: true },
+
+  // System — audit log viewer over admin_audit_log (WS0).
+  { href: "/admin/audit", label: "审计日志", icon: ScrollText, group: "system", enabled: true },
 ];

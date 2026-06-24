@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { withRole } from "@/lib/auth/require-role";
+import { writeAudit } from "@/lib/admin/audit-log";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -56,7 +57,7 @@ export async function GET(_request: Request, ctx: RouteContext) {
 }
 
 export async function PATCH(request: Request, ctx: RouteContext) {
-  return withRole("editor", async () => {
+  return withRole("editor", async (auth) => {
     const { id } = await ctx.params;
     const json = await request.json().catch(() => null);
     const parsed = PatchBody.safeParse(json);
@@ -100,6 +101,15 @@ export async function PATCH(request: Request, ctx: RouteContext) {
         { status: 500 },
       );
     }
+
+    await writeAudit({
+      admin_email: auth.user.email,
+      action: "event.update",
+      entity_type: "event",
+      entity_id: id,
+      payload: { fields: Object.keys(patch) },
+    });
+
     return NextResponse.json(data);
   });
 }

@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { withRole } from "@/lib/auth/require-role";
+import { writeAudit } from "@/lib/admin/audit-log";
 
 const CreateBody = z
   .object({
@@ -63,7 +64,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  return withRole("editor", async () => {
+  return withRole("editor", async (auth) => {
     const json = await request.json().catch(() => null);
     const parsed = CreateBody.safeParse(json);
     if (!parsed.success) {
@@ -97,6 +98,15 @@ export async function POST(request: Request) {
         { status: 500 },
       );
     }
+
+    await writeAudit({
+      admin_email: auth.user.email,
+      action: "event.create",
+      entity_type: "event",
+      entity_id: (data?.id as string) ?? null,
+      payload: { title: b.title.trim() },
+    });
+
     return NextResponse.json(data);
   });
 }

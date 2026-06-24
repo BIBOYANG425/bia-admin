@@ -17,6 +17,7 @@ export default function SidebarNav() {
     community: [],
     operations: [],
     people: [],
+    system: [],
   };
   for (const s of ADMIN_SECTIONS) grouped[s.group].push(s);
 

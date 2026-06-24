@@ -9,6 +9,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { withRole } from "@/lib/auth/require-role";
+import { writeAudit } from "@/lib/admin/audit-log";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -23,7 +24,7 @@ const Body = z
   .strip();
 
 export async function POST(request: Request, ctx: RouteContext) {
-  return withRole("editor", async () => {
+  return withRole("editor", async (auth) => {
     const { id: eventId } = await ctx.params;
     const json = await request.json().catch(() => null);
     const parsed = Body.safeParse(json);
@@ -65,6 +66,15 @@ export async function POST(request: Request, ctx: RouteContext) {
         { status: 500 },
       );
     }
+
+    await writeAudit({
+      admin_email: auth.user.email,
+      action: "event.checkin",
+      entity_type: "event",
+      entity_id: eventId,
+      payload: { student_id: studentId, source },
+    });
+
     return NextResponse.json({ ok: true, student_id: studentId, source });
   });
 }

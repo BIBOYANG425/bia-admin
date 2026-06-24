@@ -29,6 +29,8 @@ vi.mock("@/lib/auth/require-role", () => ({
   },
 }));
 
+vi.mock("@/lib/admin/audit-log", () => ({ writeAudit: vi.fn() }));
+
 vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
   createBiaServiceRoleClient: () => ({
     storage: {

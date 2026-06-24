@@ -10,7 +10,7 @@ import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { PACK_REQUEST_STATUS_VALUES } from "@biboyang425/bia-shared/shipping";
 import { withRole } from "@/lib/auth/require-role";
-import { logAdminAction } from "@/lib/audit/log";
+import { writeAudit } from "@/lib/admin/audit-log";
 import {
   checkTransition,
   PACK_REQUEST_TRANSITION,
@@ -100,11 +100,11 @@ export async function PATCH(request: Request, ctx: RouteContext) {
         { status: 500 },
       );
     }
-    await logAdminAction({
-      adminEmail: auth.user.email,
+    await writeAudit({
+      admin_email: auth.user.email,
       action: "pack_request.update",
-      entityType: "pack_request",
-      entityId: id,
+      entity_type: "pack_request",
+      entity_id: id,
       payload: { fields: Object.keys(patch), status: patch.status },
     });
 

@@ -7,7 +7,7 @@
 import { NextResponse } from "next/server";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { withRole } from "@/lib/auth/require-role";
-import { logAdminAction } from "@/lib/audit/log";
+import { writeAudit } from "@/lib/admin/audit-log";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 const ALLOWED = new Set(["image/png", "image/jpeg", "image/webp"]);
@@ -45,11 +45,11 @@ export async function POST(request: Request) {
       data: { publicUrl },
     } = admin.storage.from("shipping-contact-qr").getPublicUrl(path);
 
-    await logAdminAction({
-      adminEmail: auth.user.email,
+    await writeAudit({
+      admin_email: auth.user.email,
       action: "shipping_contact.qr_upload",
-      entityType: "shipping_contact",
-      entityId: id,
+      entity_type: "shipping_contact",
+      entity_id: id,
       payload: { id, path, bucket: "shipping-contact-qr", contentType: file.type },
     });
 

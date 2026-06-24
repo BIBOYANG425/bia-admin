@@ -18,7 +18,7 @@ import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { PARCEL_STATUS_VALUES } from "@biboyang425/bia-shared/shipping";
 import { withRole } from "@/lib/auth/require-role";
-import { logAdminAction } from "@/lib/audit/log";
+import { writeAudit } from "@/lib/admin/audit-log";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -86,11 +86,11 @@ export async function POST(request: Request, ctx: RouteContext) {
     const skipped = r.skipped ?? 0;
     const total = r.total ?? 0;
 
-    await logAdminAction({
-      adminEmail: auth.user.email,
+    await writeAudit({
+      admin_email: auth.user.email,
       action: "shipment.advance_parcels",
-      entityType: "shipment",
-      entityId: id,
+      entity_type: "shipment",
+      entity_id: id,
       payload: { target, only_forward: onlyForward, updated, skipped, failed: 0, total },
     });
 
