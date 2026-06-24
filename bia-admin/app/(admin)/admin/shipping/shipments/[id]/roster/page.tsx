@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,12 +34,6 @@ export default function ShipmentRosterPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-
-  const flash = (m: string) => {
-    setToast(m);
-    setTimeout(() => setToast(null), 1500);
-  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -85,13 +80,13 @@ export default function ShipmentRosterPage() {
         setParcels((prev) =>
           prev.map((p) => (p.id === pid ? { ...p, ...updated } : p)),
         );
-        flash("已保存");
+        toast.success("已保存");
       } else {
         const e = (await res.json().catch(() => ({}))) as { error?: string };
-        flash(e.error ?? "保存失败");
+        toast.error(e.error ?? "保存失败");
       }
     } catch {
-      flash("保存失败");
+      toast.error("保存失败");
     } finally {
       setSavingId(null);
     }
@@ -112,12 +107,6 @@ export default function ShipmentRosterPage() {
 
   return (
     <div className="space-y-6 p-8">
-      {toast && (
-        <div className="fixed right-4 top-20 z-50 rounded-md border bg-foreground px-4 py-2 text-sm text-background shadow-lg">
-          {toast}
-        </div>
-      )}
-
       <div>
         <Link
           href={`/admin/shipping/shipments/${id}`}

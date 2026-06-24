@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,7 +72,6 @@ export default function AdminShipmentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
 
   // Draft fields
   const [draftName, setDraftName] = useState("");
@@ -156,17 +156,14 @@ export default function AdminShipmentDetailPage() {
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        setToast(err.error ?? "保存失败");
-        setTimeout(() => setToast(null), 1800);
+        toast.error(err.error ?? "保存失败");
         return false;
       }
-      setToast("已保存");
-      setTimeout(() => setToast(null), 1500);
+      toast.success("已保存");
       await load();
       return true;
     } catch {
-      setToast("保存失败");
-      setTimeout(() => setToast(null), 1800);
+      toast.error("保存失败");
       return false;
     } finally {
       setSaving(false);
@@ -201,8 +198,7 @@ export default function AdminShipmentDetailPage() {
     if (draftNotes !== (shipment.notes ?? "")) patch.notes = draftNotes;
 
     if (Object.keys(patch).length === 0) {
-      setToast("没有改动");
-      setTimeout(() => setToast(null), 1200);
+      toast("没有改动");
       return;
     }
     await patchShipment(patch);
@@ -235,22 +231,19 @@ export default function AdminShipmentDetailPage() {
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        setToast(err.error ?? "附加失败");
-        setTimeout(() => setToast(null), 1800);
+        toast.error(err.error ?? "附加失败");
         return;
       }
       const data = (await res.json()) as { updated: number; skipped?: number };
-      setToast(
+      toast.success(
         `已附加 ${data.updated} 个` +
           (data.skipped ? `（跳过 ${data.skipped} 个：非「仓库签收」状态）` : ""),
       );
-      setTimeout(() => setToast(null), 1500);
       setSelected(new Set());
       setShowAttach(false);
       await load();
     } catch {
-      setToast("附加失败");
-      setTimeout(() => setToast(null), 1800);
+      toast.error("附加失败");
     } finally {
       setSaving(false);
     }
@@ -270,18 +263,15 @@ export default function AdminShipmentDetailPage() {
       );
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        setToast(err.error ?? "批量推进失败");
-        setTimeout(() => setToast(null), 1800);
+        toast.error(err.error ?? "批量推进失败");
         return;
       }
       const data = (await res.json()) as { updated: number; skipped: number };
-      setToast(`已推进 ${data.updated} 个包裹（跳过 ${data.skipped}）`);
-      setTimeout(() => setToast(null), 2200);
+      toast.success(`已推进 ${data.updated} 个包裹（跳过 ${data.skipped}）`);
       setBulkStatus("");
       await load();
     } catch {
-      setToast("批量推进失败");
-      setTimeout(() => setToast(null), 1800);
+      toast.error("批量推进失败");
     } finally {
       setBulkBusy(false);
     }
@@ -302,12 +292,6 @@ export default function AdminShipmentDetailPage() {
 
   return (
     <div className="space-y-6 p-8">
-      {toast && (
-        <div className="fixed right-4 top-20 z-50 rounded-md border bg-foreground px-4 py-2 text-sm text-background shadow-lg">
-          {toast}
-        </div>
-      )}
-
       <div>
         <Link
           href="/admin/shipping/shipments"

@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,7 +76,6 @@ export default function AdminParcelDetailPage() {
   const [draftH, setDraftH] = useState("");
   const [draftNotes, setDraftNotes] = useState("");
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
 
   const loadParcel = useCallback(async () => {
     setLoading(true);
@@ -134,8 +134,7 @@ export default function AdminParcelDetailPage() {
         setError(err.error ?? "保存失败");
         return;
       }
-      setToast("已保存");
-      setTimeout(() => setToast(null), 1500);
+      toast.success("已保存");
       await loadParcel();
     } catch {
       setError("保存失败");
@@ -165,8 +164,7 @@ export default function AdminParcelDetailPage() {
     }
 
     if (Object.keys(patch).length === 0) {
-      setToast("没有改动");
-      setTimeout(() => setToast(null), 1200);
+      toast("没有改动");
       return;
     }
     await handleSave(patch);
@@ -199,12 +197,6 @@ export default function AdminParcelDetailPage() {
 
   return (
     <div className="space-y-6 p-8">
-      {toast && (
-        <div className="fixed right-4 top-20 z-50 rounded-md border bg-foreground px-4 py-2 text-sm text-background shadow-lg">
-          {toast}
-        </div>
-      )}
-
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link

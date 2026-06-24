@@ -4,6 +4,7 @@
 // bia-roommate (Phase-3 slice 6), restyled to shadcn.
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,7 +44,6 @@ export default function AdminShipmentRequestsPage() {
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
   const [filter, setFilter] = useState<ShipmentRequestStatus | "">("");
 
   useEffect(() => {
@@ -82,8 +82,7 @@ export default function AdminShipmentRequestsPage() {
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        setToast(err.error ?? "保存失败");
-        setTimeout(() => setToast(null), 1800);
+        toast.error(err.error ?? "保存失败");
         return;
       }
       const updated = (await res.json()) as ShipmentRequest;
@@ -93,8 +92,7 @@ export default function AdminShipmentRequestsPage() {
         delete nextState[id];
         return nextState;
       });
-      setToast("已保存");
-      setTimeout(() => setToast(null), 1500);
+      toast.success("已保存");
     } finally {
       setSavingId(null);
     }
@@ -102,12 +100,6 @@ export default function AdminShipmentRequestsPage() {
 
   return (
     <div className="space-y-6 p-8">
-      {toast && (
-        <div className="fixed right-4 top-20 z-50 rounded-md border bg-foreground px-4 py-2 text-sm text-background shadow-lg">
-          {toast}
-        </div>
-      )}
-
       <header className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-2xl font-bold tracking-tight">集运 · 发货请求</h1>
         <p className="text-xs text-muted-foreground">{requests.length} 个申请</p>
