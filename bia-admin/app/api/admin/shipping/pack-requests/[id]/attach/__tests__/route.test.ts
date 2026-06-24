@@ -1,13 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { requireRoleMock, fromMock, rpcMock, updateSingleMock } = vi.hoisted(
-  () => ({
-    requireRoleMock: vi.fn(),
-    fromMock: vi.fn(),
-    rpcMock: vi.fn(),
-    updateSingleMock: vi.fn(),
-  }),
-);
+const { requireRoleMock, fromMock, rpcMock } = vi.hoisted(() => ({
+  requireRoleMock: vi.fn(),
+  fromMock: vi.fn(),
+  rpcMock: vi.fn(),
+}));
 
 vi.mock("@/lib/auth/require-role", () => ({
   withRole: async (_min: unknown, handler: any) => {
@@ -58,12 +55,17 @@ function req(body: unknown) {
   );
 }
 
+// The route validates the shipment + request status (via fromMock), then does
+// the whole attach atomically through the admin_attach_pack_request RPC, which
+// returns { total, attached, request }.
 function setup({
   shipment = { id: "s1", status: "forming" } as Record<string, unknown> | null,
   pack = { id: "pr1", status: "pending" } as Record<string, unknown> | null,
-  links = [{ parcel_id: "p1" }, { parcel_id: "p2" }] as Array<{
-    parcel_id: string;
-  }>,
+  rpc = {
+    total: 2,
+    attached: 2,
+    request: { id: "pr1", status: "approved", shipment_id: "s1" },
+  } as Record<string, unknown>,
 } = {}) {
   fromMock.mockImplementation((table: string) => {
     if (table === "shipments") {
@@ -73,28 +75,16 @@ function setup({
         }),
       };
     }
-    if (table === "pack_request_parcels") {
-      return {
-        select: () => ({ eq: () => Promise.resolve({ data: links }) }),
-      };
-    }
     if (table === "pack_requests") {
       return {
         select: () => ({
           eq: () => ({ maybeSingle: () => Promise.resolve({ data: pack }) }),
         }),
-        update: () => ({
-          eq: () => ({ select: () => ({ single: updateSingleMock }) }),
-        }),
       };
     }
     return {};
   });
-  rpcMock.mockResolvedValue({ data: 2, error: null });
-  updateSingleMock.mockResolvedValue({
-    data: { id: "pr1", status: "approved", shipment_id: "s1" },
-    error: null,
-  });
+  rpcMock.mockResolvedValue({ data: rpc, error: null });
 }
 
 describe("POST /api/admin/shipping/pack-requests/[id]/attach", () => {
@@ -102,7 +92,6 @@ describe("POST /api/admin/shipping/pack-requests/[id]/attach", () => {
     requireRoleMock.mockReset();
     fromMock.mockReset();
     rpcMock.mockReset();
-    updateSingleMock.mockReset();
     requireRoleMock.mockResolvedValue(editor);
   });
 
@@ -129,15 +118,14 @@ describe("POST /api/admin/shipping/pack-requests/[id]/attach", () => {
     expect(rpcMock).not.toHaveBeenCalled();
   });
 
-  it("400s when the pack request has no parcels", async () => {
-    setup({ links: [] });
+  it("400s when the request has no parcels (RPC returns total 0, no approve)", async () => {
+    setup({ rpc: { total: 0, attached: 0, request: null } });
     const res = await POST(req({ shipment_id: "s1" }), ctxFor("pr1"));
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "no_parcels" });
-    expect(rpcMock).not.toHaveBeenCalled();
   });
 
-  it("attaches all parcels via RPC, marks the request approved, and returns both", async () => {
+  it("attaches + approves atomically via one RPC and returns counts + request", async () => {
     setup();
     const res = await POST(req({ shipment_id: "s1" }), ctxFor("pr1"));
     expect(res.status).toBe(200);
@@ -146,16 +134,21 @@ describe("POST /api/admin/shipping/pack-requests/[id]/attach", () => {
       skipped: 0,
       request: { id: "pr1", status: "approved", shipment_id: "s1" },
     });
-    expect(rpcMock).toHaveBeenCalledWith("admin_attach_parcels_to_shipment", {
-      p_parcel_ids: ["p1", "p2"],
+    expect(rpcMock).toHaveBeenCalledWith("admin_attach_pack_request", {
+      p_request_id: "pr1",
       p_shipment_id: "s1",
       p_actor_user_id: "admin-3",
     });
   });
 
-  it("reports skipped parcels the RPC found ineligible (not received_cn)", async () => {
-    setup();
-    rpcMock.mockResolvedValue({ data: 1, error: null }); // 1 of 2 eligible
+  it("reports parcels the RPC found ineligible (not received_cn) as skipped", async () => {
+    setup({
+      rpc: {
+        total: 2,
+        attached: 1,
+        request: { id: "pr1", status: "approved", shipment_id: "s1" },
+      },
+    });
     const res = await POST(req({ shipment_id: "s1" }), ctxFor("pr1"));
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ attached: 1, skipped: 1 });
@@ -177,12 +170,11 @@ describe("POST /api/admin/shipping/pack-requests/[id]/attach", () => {
     expect(rpcMock).not.toHaveBeenCalled();
   });
 
-  it("surfaces an RPC failure as 500 and does not mark approved", async () => {
+  it("surfaces an RPC failure as 500", async () => {
     setup();
     rpcMock.mockResolvedValue({ data: null, error: { message: "rpc boom" } });
     const res = await POST(req({ shipment_id: "s1" }), ctxFor("pr1"));
     expect(res.status).toBe(500);
     expect((await res.json()).error).toBe("attach_failed");
-    expect(updateSingleMock).not.toHaveBeenCalled();
   });
 });

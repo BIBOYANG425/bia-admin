@@ -1,8 +1,9 @@
 // /api/admin/shipping/pack-requests/[id]/attach
-// POST — body { shipment_id }. Attaches every parcel in this pack request to
-// the shipment via admin_attach_parcels_to_shipment RPC (auto-bumps
-// received_cn -> in_transit, stamps actor_role='admin'), then sets the pack
-// request's shipment_id + status='approved'. editor+.
+// POST — body { shipment_id }. Atomically (one txn, via admin_attach_pack_request
+// RPC) attaches every received_cn parcel in this pack request to the shipment
+// (received_cn -> in_transit, actor_role='admin') AND marks the request
+// shipment_id + status='approved' — so a parcel move can't land without the
+// request approval, or vice-versa. editor+.
 // Ported from bia-roommate (Phase-3 slice 5): adminHandler -> withRole.
 
 import { NextResponse } from "next/server";
@@ -76,19 +77,13 @@ export async function POST(request: Request, ctx: RouteContext) {
       );
     }
 
-    const { data: links } = await admin
-      .from("pack_request_parcels")
-      .select("parcel_id")
-      .eq("request_id", id);
-    const parcelIds = (links ?? []).map((l) => l.parcel_id);
-    if (parcelIds.length === 0) {
-      return NextResponse.json({ error: "no_parcels" }, { status: 400 });
-    }
-
-    const { data: attached, error: rpcErr } = await admin.rpc(
-      "admin_attach_parcels_to_shipment",
+    // Move the parcels AND approve the request atomically (one transaction) —
+    // see admin_attach_pack_request. Returns { total, attached, request }; a
+    // request with no parcels returns total=0 and is NOT approved.
+    const { data: result, error: rpcErr } = await admin.rpc(
+      "admin_attach_pack_request",
       {
-        p_parcel_ids: parcelIds,
+        p_request_id: id,
         p_shipment_id: shipmentId,
         p_actor_user_id: auth.user.id,
       },
@@ -99,38 +94,30 @@ export async function POST(request: Request, ctx: RouteContext) {
         { status: 500 },
       );
     }
-
-    const { data: updated, error: updErr } = await admin
-      .from("pack_requests")
-      .update({ shipment_id: shipmentId, status: "approved" })
-      .eq("id", id)
-      .select()
-      .single();
-    if (updErr) {
-      return NextResponse.json(
-        { error: "update_failed", details: updErr.message },
-        { status: 500 },
-      );
+    const r = (result ?? {}) as {
+      total?: number;
+      attached?: number;
+      request?: unknown;
+    };
+    if ((r.total ?? 0) === 0) {
+      return NextResponse.json({ error: "no_parcels" }, { status: 400 });
     }
 
-    // attached < parcelIds.length means some parcels were ineligible
-    // (not received_cn) and the RPC skipped them — surface that to the officer.
-    const attachedCount = (attached as number | null) ?? 0;
+    // attached < total means some parcels were ineligible (not received_cn) and
+    // the RPC skipped them — surface that to the officer.
+    const attachedCount = r.attached ?? 0;
+    const skipped = (r.total ?? 0) - attachedCount;
     await logAdminAction({
       adminEmail: auth.user.email,
       action: "pack_request.attach",
       entityType: "pack_request",
       entityId: id,
-      payload: {
-        shipment_id: shipmentId,
-        attached: attachedCount,
-        skipped: parcelIds.length - attachedCount,
-      },
+      payload: { shipment_id: shipmentId, attached: attachedCount, skipped },
     });
     return NextResponse.json({
       attached: attachedCount,
-      skipped: parcelIds.length - attachedCount,
-      request: updated,
+      skipped,
+      request: r.request ?? null,
     });
   });
 }
