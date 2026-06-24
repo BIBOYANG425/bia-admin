@@ -5,8 +5,11 @@
 // the row's source via /api/admin/events/[id]/checkin. Auth-gated by the API.
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { toast } from "sonner";
+import { roleAtLeast } from "@biboyang425/bia-shared";
+import { useRole } from "@/lib/auth/role-context";
 import { EventEditor, type EventRecord } from "../EventEditor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,13 +39,17 @@ function fmtDate(value: string): string {
 
 export default function AdminEventDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const role = useRole();
+  const canWrite = roleAtLeast(role, "editor");
+  const canDelete = roleAtLeast(role, "super_admin");
   const [event, setEvent] = useState<EventRecord | null>(null);
   const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [walkIn, setWalkIn] = useState("");
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -75,7 +82,6 @@ export default function AdminEventDetailPage() {
   }) {
     if (busy) return;
     setBusy(true);
-    setMsg("");
     try {
       const res = await fetch(`/api/admin/events/${id}/checkin`, {
         method: "POST",
@@ -88,13 +94,31 @@ export default function AdminEventDetailPage() {
       }
       await load();
     } catch (e) {
-      setMsg(
+      toast.error(
         (e as Error).message === "student_not_found"
           ? "没找到该 member_id"
           : "操作失败",
       );
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!window.confirm("删除这个活动？将同时移除其报名/签到记录，不可撤销。"))
+      return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/admin/events/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(j.error ?? "删除失败");
+        return;
+      }
+      toast.success("已删除");
+      router.push("/admin/events");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -116,39 +140,63 @@ export default function AdminEventDetailPage() {
       >
         ← 活动
       </Link>
-      <h1 className="text-2xl font-bold tracking-tight">{event.title}</h1>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <h1 className="text-2xl font-bold tracking-tight">{event.title}</h1>
+        {canDelete && (
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            disabled={deleting}
+            onClick={handleDelete}
+          >
+            {deleting ? "删除中…" : "删除活动"}
+          </Button>
+        )}
+      </div>
 
       <EventEditor event={event} eventId={id} />
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">
-          报名 / 出席（{rsvps.length} 报名 · {checkins.length} 签到）
-        </h2>
-
-        <div className="flex items-end gap-2">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-muted-foreground">
-              按 member_id 签到（现场 walk-in）
-            </label>
-            <Input
-              value={walkIn}
-              onChange={(e) => setWalkIn(e.target.value)}
-              placeholder="BIA-XXXXXX"
-              className="w-48"
-            />
-          </div>
-          <Button
-            type="button"
-            disabled={busy || !walkIn.trim()}
-            onClick={async () => {
-              await checkin({ member_id: walkIn.trim(), checked_in: true });
-              setWalkIn("");
-            }}
-          >
-            签到
-          </Button>
-          {msg && <span className="text-sm text-muted-foreground">{msg}</span>}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">
+            报名 / 出席（{rsvps.length} 报名 · {checkins.length} 签到）
+          </h2>
+          {attendance.length > 0 && (
+            <a
+              href={`/api/admin/events/${id}/export`}
+              className="inline-flex h-8 items-center rounded-md border border-input px-3 text-xs font-medium hover:bg-muted"
+            >
+              导出 CSV
+            </a>
+          )}
         </div>
+
+        {canWrite && (
+          <div className="flex items-end gap-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground">
+                按 member_id 签到（现场 walk-in）
+              </label>
+              <Input
+                value={walkIn}
+                onChange={(e) => setWalkIn(e.target.value)}
+                placeholder="BIA-XXXXXX"
+                className="w-48"
+              />
+            </div>
+            <Button
+              type="button"
+              disabled={busy || !walkIn.trim()}
+              onClick={async () => {
+                await checkin({ member_id: walkIn.trim(), checked_in: true });
+                setWalkIn("");
+              }}
+            >
+              签到
+            </Button>
+          </div>
+        )}
 
         {attendance.length === 0 ? (
           <p className="text-sm text-muted-foreground">还没有人报名</p>
@@ -183,7 +231,7 @@ export default function AdminEventDetailPage() {
                         {fmtDate(a.created_at)}
                       </TableCell>
                       <TableCell className="px-4 py-2">
-                        {sid && (
+                        {sid && canWrite && (
                           <Button
                             type="button"
                             size="sm"

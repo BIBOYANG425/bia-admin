@@ -113,3 +113,30 @@ export async function PATCH(request: Request, ctx: RouteContext) {
     return NextResponse.json(data);
   });
 }
+
+export async function DELETE(_request: Request, ctx: RouteContext) {
+  return withRole("super_admin", async (auth) => {
+    const { id } = await ctx.params;
+    const admin = createBiaServiceRoleClient();
+
+    // Remove attendance first in case the FK isn't ON DELETE CASCADE.
+    await admin.from("event_attendance").delete().eq("event_id", id);
+    const { error } = await admin.from("events").delete().eq("id", id);
+    if (error) {
+      return NextResponse.json(
+        { error: "delete_failed", details: error.message },
+        { status: 500 },
+      );
+    }
+
+    await writeAudit({
+      admin_email: auth.user.email,
+      action: "event.delete",
+      entity_type: "event",
+      entity_id: id,
+      payload: {},
+    });
+
+    return NextResponse.json({ ok: true });
+  });
+}
