@@ -33,7 +33,9 @@ interface Article {
   tags: string[];
   cover_image_url: string | null;
   updated_at?: string;
+  scheduled_publish_at?: string | null;
   rejected_at?: string | null;
+  rejected_by?: string | null;
   rejection_reason?: string | null;
 }
 
@@ -61,6 +63,21 @@ export default async function EditArticlePage({
 
   const article = data as Article;
 
+  // Resolve the reviewer who last sent this back so the editor banner can show
+  // "Sent back by <name>". admin_users has no display name column, so we fall
+  // back to the email local-part for a friendlier label.
+  let rejectedByName: string | null = null;
+  if (article.rejected_by) {
+    const { data: reviewer } = await supa
+      .from("admin_users")
+      .select("email")
+      .eq("id", article.rejected_by)
+      .maybeSingle();
+    if (reviewer?.email) {
+      rejectedByName = reviewer.email.split("@")[0] || reviewer.email;
+    }
+  }
+
   return (
     <div className="p-8 space-y-6">
       <header className="flex flex-col gap-3">
@@ -87,7 +104,7 @@ export default async function EditArticlePage({
         </div>
       </header>
 
-      <BlogEditor role={role} initial={article} />
+      <BlogEditor role={role} initial={article} rejectedByName={rejectedByName} />
     </div>
   );
 }

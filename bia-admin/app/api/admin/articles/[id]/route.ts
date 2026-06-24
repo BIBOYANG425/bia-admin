@@ -9,6 +9,7 @@ import {
   withCollisionSuffix,
 } from "@biboyang425/bia-shared/articles";
 import { writeAudit } from "@/lib/admin/audit-log";
+import { removeArticleCoverByUrl } from "@/lib/admin/article-covers";
 import { withRole } from "@/lib/auth/require-role";
 
 interface RouteContext {
@@ -21,6 +22,14 @@ const PatchArticleBody = z.object({
   language: z.enum(["en", "zh"]).optional(),
   tags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
   cover_image_url: z.string().url().nullable().optional(),
+  // Explicit publish schedule. `null` clears it. A non-null value flips the
+  // article to `published` once it passes, via the publish_scheduled_articles
+  // pg_cron job; the manual publish flow never sets this.
+  scheduled_publish_at: z
+    .string()
+    .datetime({ offset: true })
+    .nullable()
+    .optional(),
 });
 
 function slugCandidates(base: string): string[] {
@@ -66,7 +75,7 @@ export async function PATCH(request: Request, ctx: RouteContext) {
     const admin = createBiaServiceRoleClient();
     const { data: existing, error: lookupError } = await admin
       .from("articles")
-      .select("id, slug, status, title")
+      .select("id, slug, status, title, cover_image_url")
       .eq("id", id)
       .maybeSingle();
 
@@ -126,8 +135,19 @@ export async function PATCH(request: Request, ctx: RouteContext) {
     }
     if (parsed.data.language !== undefined) update.language = parsed.data.language;
     if (parsed.data.tags !== undefined) update.tags = parsed.data.tags;
+
+    // Detect a cover change so we can clean up the previous storage object
+    // after the write succeeds (the old cover would otherwise orphan).
+    let previousCover: string | null = null;
+    let coverChanged = false;
     if (parsed.data.cover_image_url !== undefined) {
       update.cover_image_url = parsed.data.cover_image_url;
+      coverChanged = (existing.cover_image_url ?? null) !== parsed.data.cover_image_url;
+      if (coverChanged) previousCover = existing.cover_image_url ?? null;
+    }
+
+    if (parsed.data.scheduled_publish_at !== undefined) {
+      update.scheduled_publish_at = parsed.data.scheduled_publish_at;
     }
 
     const fields = Object.keys(update);
@@ -149,6 +169,31 @@ export async function PATCH(request: Request, ctx: RouteContext) {
       );
     }
 
+    // Append a revision snapshot of the saved state. Best-effort: a failed
+    // history insert must not break the save the user just performed.
+    try {
+      const { error: revisionError } = await admin
+        .from("article_revisions")
+        .insert({
+          article_id: id,
+          title: data.title,
+          body: data.html_clean,
+          language: data.language,
+          status: data.status,
+          edited_by: auth.adminUser.id,
+        });
+      if (revisionError) {
+        console.error("article revision insert failed:", revisionError.message);
+      }
+    } catch (revisionError) {
+      console.error("article revision insert threw:", revisionError);
+    }
+
+    // Remove the previous cover object now that the row points elsewhere.
+    if (coverChanged && previousCover) {
+      await removeArticleCoverByUrl(previousCover);
+    }
+
     await writeAudit({
       admin_email: auth.user.email,
       action: "article.update",
@@ -168,7 +213,7 @@ export async function DELETE(_request: Request, ctx: RouteContext) {
 
     const { data: existing, error: lookupError } = await admin
       .from("articles")
-      .select("id")
+      .select("id, cover_image_url")
       .eq("id", id)
       .maybeSingle();
 
@@ -190,6 +235,10 @@ export async function DELETE(_request: Request, ctx: RouteContext) {
         { status: 500 },
       );
     }
+
+    // Clean up the orphaned cover object (article_revisions cascade-delete on
+    // the row, so only the storage object needs explicit removal).
+    await removeArticleCoverByUrl(existing.cover_image_url ?? null);
 
     await writeAudit({
       admin_email: auth.user.email,
