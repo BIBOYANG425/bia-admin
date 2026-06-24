@@ -7,12 +7,13 @@
 import { NextResponse } from "next/server";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { withRole } from "@/lib/auth/require-role";
+import { logAdminAction } from "@/lib/audit/log";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 const ALLOWED = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 export async function POST(request: Request) {
-  return withRole("editor", async () => {
+  return withRole("editor", async (auth) => {
     const form = await request.formData().catch(() => null);
     const file = form?.get("file");
     if (!(file instanceof File)) {
@@ -43,6 +44,15 @@ export async function POST(request: Request) {
     const {
       data: { publicUrl },
     } = admin.storage.from("shipping-contact-qr").getPublicUrl(path);
+
+    await logAdminAction({
+      adminEmail: auth.user.email,
+      action: "shipping_contact.qr_upload",
+      entityType: "shipping_contact",
+      entityId: id,
+      payload: { id, path, bucket: "shipping-contact-qr", contentType: file.type },
+    });
+
     return NextResponse.json({ url: publicUrl });
   });
 }

@@ -7,6 +7,7 @@
 import { NextResponse } from "next/server";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { withRole } from "@/lib/auth/require-role";
+import { logAdminAction } from "@/lib/audit/log";
 
 export async function GET() {
   return withRole("viewer", async () => {
@@ -27,7 +28,7 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
-  return withRole("editor", async () => {
+  return withRole("editor", async (auth) => {
     let body: Record<string, unknown>;
     try {
       body = (await request.json()) as Record<string, unknown>;
@@ -72,6 +73,15 @@ export async function PATCH(request: Request) {
         { status: 500 },
       );
     }
+
+    await logAdminAction({
+      adminEmail: auth.user.email,
+      action: "shipping_contact.update",
+      entityType: "shipping_contact",
+      entityId: id,
+      payload: { fields: Object.keys(patch) },
+    });
+
     return NextResponse.json(data);
   });
 }

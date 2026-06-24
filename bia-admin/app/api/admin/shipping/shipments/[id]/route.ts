@@ -8,6 +8,7 @@ import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { SHIPMENT_STATUS_VALUES } from "@biboyang425/bia-shared/shipping";
 import { withRole } from "@/lib/auth/require-role";
+import { logAdminAction } from "@/lib/audit/log";
 import {
   enqueueShippingNotifications,
   type ShippingNotificationRow,
@@ -61,7 +62,7 @@ export async function GET(_request: Request, ctx: RouteContext) {
 }
 
 export async function PATCH(request: Request, ctx: RouteContext) {
-  return withRole("editor", async () => {
+  return withRole("editor", async (auth) => {
     const { id } = await ctx.params;
     const json = await request.json().catch(() => null);
     const parsed = PatchShipmentBody.safeParse(json);
@@ -156,6 +157,14 @@ export async function PATCH(request: Request, ctx: RouteContext) {
       }
       await enqueueShippingNotifications(admin, rows);
     }
+
+    await logAdminAction({
+      adminEmail: auth.user.email,
+      action: "shipment.update",
+      entityType: "shipment",
+      entityId: id,
+      payload: { fields: Object.keys(patch), status: data.status },
+    });
 
     return NextResponse.json(data);
   });

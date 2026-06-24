@@ -22,6 +22,7 @@ import {
   type ParcelStatus,
 } from "@biboyang425/bia-shared/shipping";
 import { withRole } from "@/lib/auth/require-role";
+import { logAdminAction } from "@/lib/audit/log";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -105,6 +106,21 @@ export async function POST(request: Request, ctx: RouteContext) {
       }
       updated++;
     }
+
+    await logAdminAction({
+      adminEmail: auth.user.email,
+      action: "shipment.advance_parcels",
+      entityType: "shipment",
+      entityId: id,
+      payload: {
+        target,
+        only_forward: onlyForward,
+        updated,
+        skipped,
+        failed: failed.length,
+        total: parcels?.length ?? 0,
+      },
+    });
 
     return NextResponse.json({
       updated,
