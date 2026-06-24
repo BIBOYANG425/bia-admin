@@ -19,27 +19,8 @@ export async function POST(_request: Request, ctx: RouteContext) {
     const { id } = await ctx.params;
     const admin = createBiaServiceRoleClient();
 
-    const { data: sub, error: lookupError } = await admin
-      .from("event_submissions")
-      .select("id, status, title, description, date, location, category")
-      .eq("id", id)
-      .maybeSingle();
-    if (lookupError) {
-      return NextResponse.json(
-        { error: "lookup_failed", details: lookupError.message },
-        { status: 500 },
-      );
-    }
-    if (!sub) {
-      return NextResponse.json({ error: "not_found" }, { status: 404 });
-    }
-    if (sub.status !== "pending") {
-      return NextResponse.json(
-        { error: "invalid_transition", from: sub.status },
-        { status: 409 },
-      );
-    }
-
+    // Cap check stays in the route (a count query); the insert+update are made
+    // atomic by the approve_event_submission RPC.
     const approvedThisWeek = await countApprovedSubmissionsThisWeek(admin);
     if (approvedThisWeek >= MARKETPLACE_WEEKLY_CAP) {
       return NextResponse.json(
@@ -48,38 +29,23 @@ export async function POST(_request: Request, ctx: RouteContext) {
       );
     }
 
-    const { data: event, error: insertError } = await admin
-      .from("events")
-      .insert({
-        title: sub.title,
-        description: sub.description ?? null,
-        date: sub.date ?? null,
-        location: sub.location ?? null,
-        category: sub.category ?? null,
-        source: "community",
-        status: "active",
-      })
-      .select("id")
-      .single();
-    if (insertError || !event) {
+    const { data: eventId, error: rpcError } = await admin.rpc(
+      "approve_event_submission",
+      { p_submission_id: id, p_admin_id: auth.adminUser.id },
+    );
+    if (rpcError) {
+      const msg = rpcError.message ?? "";
+      if (msg.includes("not_found")) {
+        return NextResponse.json({ error: "not_found" }, { status: 404 });
+      }
+      if (msg.includes("invalid_transition")) {
+        return NextResponse.json(
+          { error: "invalid_transition", details: msg },
+          { status: 409 },
+        );
+      }
       return NextResponse.json(
-        { error: "create_failed", details: insertError?.message },
-        { status: 500 },
-      );
-    }
-
-    const { error: updateError } = await admin
-      .from("event_submissions")
-      .update({
-        status: "approved",
-        approved_event_id: event.id,
-        decided_by: auth.adminUser.id,
-        decided_at: new Date().toISOString(),
-      })
-      .eq("id", id);
-    if (updateError) {
-      return NextResponse.json(
-        { error: "update_failed", details: updateError.message },
+        { error: "approve_failed", details: msg },
         { status: 500 },
       );
     }
@@ -89,9 +55,9 @@ export async function POST(_request: Request, ctx: RouteContext) {
       action: "event_submission.approve",
       entity_type: "event_submission",
       entity_id: id,
-      payload: { event_id: event.id },
+      payload: { event_id: eventId },
     });
 
-    return NextResponse.json({ ok: true, event_id: event.id });
+    return NextResponse.json({ ok: true, event_id: eventId });
   });
 }
