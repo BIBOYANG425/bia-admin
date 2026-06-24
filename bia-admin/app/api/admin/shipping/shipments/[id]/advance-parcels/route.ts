@@ -7,8 +7,11 @@
 // audit chain is preserved (actor_role='admin') exactly as a single-parcel
 // edit. Branch statuses (lost/returned/disputed) are skipped, and by default
 // only parcels EARLIER than the target on the happy path are advanced (no
-// accidental backward moves). NOTE: this updates progress only — it does NOT
-// notify owners (the notification pipeline is a separate, unbuilt piece).
+// accidental backward moves). NOTE: each admin_patch_parcel UPDATE fires the
+// live enqueue_parcel_notification trigger, so a bulk advance QUEUES one
+// shipping_notifications row per parcel. Nothing is delivered yet (the george
+// consumer is gated off), but the whole batch drains to students once the
+// notifier is enabled — a bulk advance is NOT silent.
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
