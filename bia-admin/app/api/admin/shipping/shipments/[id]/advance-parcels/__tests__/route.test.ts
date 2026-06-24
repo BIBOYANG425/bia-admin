@@ -56,10 +56,13 @@ function req(body: unknown) {
   );
 }
 
-function setup(
-  parcelRows: Array<{ id: string; status: string }>,
+// The route now validates the shipment exists (via fromMock) then advances the
+// whole flight atomically through admin_advance_parcels, which applies the
+// skip rules in SQL and returns { total, updated, skipped }.
+function setup({
   shipmentExists = true,
-) {
+  rpc = { total: 5, updated: 2, skipped: 3 } as Record<string, unknown>,
+} = {}) {
   fromMock.mockImplementation((table: string) => {
     if (table === "shipments") {
       return {
@@ -74,16 +77,9 @@ function setup(
         }),
       };
     }
-    if (table === "parcels") {
-      return {
-        select: () => ({
-          eq: () => Promise.resolve({ data: parcelRows, error: null }),
-        }),
-      };
-    }
     return {};
   });
-  rpcMock.mockResolvedValue({ data: null, error: null });
+  rpcMock.mockResolvedValue({ data: rpc, error: null });
 }
 
 describe("/api/admin/shipping/shipments/[id]/advance-parcels", () => {
@@ -95,7 +91,7 @@ describe("/api/admin/shipping/shipments/[id]/advance-parcels", () => {
   });
 
   it("rejects an invalid target status before touching anything", async () => {
-    setup([]);
+    setup();
     const res = await POST(req({ status: "bogus" }), ctxFor("s1"));
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "invalid_status" });
@@ -103,66 +99,55 @@ describe("/api/admin/shipping/shipments/[id]/advance-parcels", () => {
   });
 
   it("rejects a malformed body", async () => {
-    setup([]);
+    setup();
     const res = await POST(req({ nope: 1 }), ctxFor("s1"));
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("invalid_body");
   });
 
-  it("404s when the shipment does not exist", async () => {
-    setup([], false);
+  it("404s when the shipment does not exist (no RPC)", async () => {
+    setup({ shipmentExists: false });
     const res = await POST(req({ status: "in_transit" }), ctxFor("s1"));
     expect(res.status).toBe(404);
     expect(rpcMock).not.toHaveBeenCalled();
   });
 
-  it("forward-only: advances earlier parcels, skips at/past target and branch statuses", async () => {
-    setup([
-      { id: "p1", status: "received_cn" }, // earlier than in_transit -> advance
-      { id: "p2", status: "in_transit" }, // already at target -> skip
-      { id: "p3", status: "arrived_us" }, // past target -> skip
-      { id: "p4", status: "lost" }, // off-path branch -> skip
-      { id: "p5", status: "expected" }, // earliest -> advance
-    ]);
-
+  it("advances the flight atomically via one RPC and returns the counts", async () => {
+    setup({ rpc: { total: 5, updated: 2, skipped: 3 } });
     const res = await POST(req({ status: "in_transit" }), ctxFor("s1"));
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({
+    expect(await res.json()).toEqual({
       updated: 2,
       skipped: 3,
       failed: 0,
       total: 5,
     });
-
-    expect(rpcMock).toHaveBeenCalledTimes(2);
-    expect(rpcMock).toHaveBeenCalledWith("admin_patch_parcel", {
-      p_id: "p1",
+    expect(rpcMock).toHaveBeenCalledTimes(1);
+    expect(rpcMock).toHaveBeenCalledWith("admin_advance_parcels", {
+      p_shipment_id: "s1",
+      p_target: "in_transit",
+      p_only_forward: true, // default
       p_actor_user_id: "admin-1",
-      p_patch: { status: "in_transit" },
-    });
-    expect(rpcMock).toHaveBeenCalledWith("admin_patch_parcel", {
-      p_id: "p5",
-      p_actor_user_id: "admin-1",
-      p_patch: { status: "in_transit" },
     });
   });
 
-  it("counts per-parcel RPC failures without aborting the batch", async () => {
-    setup([
-      { id: "p1", status: "received_cn" },
-      { id: "p2", status: "expected" },
-    ]);
-    rpcMock
-      .mockResolvedValueOnce({ data: null, error: { message: "boom" } })
-      .mockResolvedValueOnce({ data: null, error: null });
-
-    const res = await POST(req({ status: "in_transit" }), ctxFor("s1"));
-    expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({
-      updated: 1,
-      failed: 1,
-      total: 2,
+  it("forwards only_forward:false to the RPC", async () => {
+    setup();
+    await POST(req({ status: "in_transit", only_forward: false }), ctxFor("s1"));
+    expect(rpcMock).toHaveBeenCalledWith("admin_advance_parcels", {
+      p_shipment_id: "s1",
+      p_target: "in_transit",
+      p_only_forward: false,
+      p_actor_user_id: "admin-1",
     });
+  });
+
+  it("surfaces an RPC failure as 500 (whole batch rolled back)", async () => {
+    setup();
+    rpcMock.mockResolvedValue({ data: null, error: { message: "boom" } });
+    const res = await POST(req({ status: "in_transit" }), ctxFor("s1"));
+    expect(res.status).toBe(500);
+    expect((await res.json()).error).toBe("advance_failed");
   });
 
   it("returns 403 when the role gate rejects", async () => {
