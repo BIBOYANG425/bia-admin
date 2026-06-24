@@ -482,7 +482,7 @@ export default function AdminShipmentDetailPage() {
           <CardContent className="space-y-2 p-4 pt-0">
             <p className="text-xs text-muted-foreground">
               一键把本批 {parcels.length} 个包裹全部推进到所选状态（默认只前进，跳过
-              丢失/退回/已在该状态的包裹）。审计照常记录；暂不通知用户。
+              丢失/退回/已在该状态的包裹）。审计照常记录；每个推进会给学生入队一条状态通知（通知功能开启后下发）。
             </p>
             <div className="flex flex-col gap-2 sm:flex-row">
               <select
@@ -539,7 +539,7 @@ export default function AdminShipmentDetailPage() {
           <Card>
             <CardContent className="space-y-3 p-4">
               <p className="text-xs text-muted-foreground">
-                选择待关联的 received_cn 包裹 · 附加后自动推进到 in_transit
+                选择待关联的 received_cn 包裹 · 附加后自动推进到 in_transit（会给学生入队一条通知）
               </p>
               {unassigned.length === 0 ? (
                 <p className="text-xs text-muted-foreground">

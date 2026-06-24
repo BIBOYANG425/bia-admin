@@ -2,6 +2,9 @@
 // POST — body { parcel_ids: string[] }; sets shipment_id and auto-bumps
 // received_cn -> in_transit via admin_attach_parcels_to_shipment RPC (which
 // stamps actor_role='admin' on the event log). editor+.
+// The received_cn -> in_transit bump fires the live enqueue_parcel_notification
+// trigger, so attaching QUEUES one 'in_transit' shipping_notifications row per
+// parcel (delivered to students once the george notifier is enabled).
 // Ported from bia-roommate (Phase-3 slice 4): adminHandler -> withRole.
 
 import { NextResponse } from "next/server";
