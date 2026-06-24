@@ -81,7 +81,7 @@ describe("PATCH /api/admin/shipping/pack-requests/[id]", () => {
     expect(await res.json()).toEqual({ error: "no_fields" });
   });
 
-  it("updates status/admin_note/shipment_id with normalization", async () => {
+  it("updates status/admin_note and IGNORES shipment_id (attach-only)", async () => {
     let captured: Record<string, unknown> | null = null;
     fromMock.mockImplementation(() => ({
       update: (p: Record<string, unknown>) => {
@@ -90,6 +90,8 @@ describe("PATCH /api/admin/shipping/pack-requests/[id]", () => {
       },
     }));
     const res = await PATCH(
+      // shipment_id is sent but must be stripped — associating a request with a
+      // shipment is the /attach route's job (it also moves the parcels).
       patchReq({ status: "contacted", admin_note: "", shipment_id: "s1" }),
       ctxFor("pr1"),
     );
@@ -97,7 +99,6 @@ describe("PATCH /api/admin/shipping/pack-requests/[id]", () => {
     expect(captured).toEqual({
       status: "contacted",
       admin_note: null, // "" -> null
-      shipment_id: "s1",
     });
   });
 });
