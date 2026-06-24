@@ -44,19 +44,37 @@ export default function SignInForm() {
     const supa = createBiaBrowserClient();
     const origin = window.location.origin;
     setSubmitting(true);
+    // Invite-only console: never auto-mint an auth.users row for an arbitrary
+    // email. Already-invited users are recognized in /auth/callback, which
+    // accepts the pending invitation via the accept_invitation RPC. A
+    // not-yet-invited email simply gets "user not found" (we surface the same
+    // not-on-the-list guidance below regardless).
     const { error } = await supa.auth.signInWithOtp({
       email,
       options: {
         emailRedirectTo: `${origin}/auth/callback`,
-        shouldCreateUser: true,
+        shouldCreateUser: false,
       },
     });
     setSubmitting(false);
     if (error) {
+      // With shouldCreateUser:false, Supabase reports a not-yet-invited email as
+      // an "otp_disabled" / "user not found" style error. Don't leak that raw
+      // string — show the same role-neutral "not on the invite list" guidance.
+      const code = (error as { code?: string }).code;
+      if (
+        code === "otp_disabled" ||
+        /signups? not allowed|not found/i.test(error.message)
+      ) {
+        toast.error(
+          "That email is not on the admin invite list. Ask a BIA super-admin to invite you. / 该邮箱不在管理员邀请名单中，请联系 BIA 超级管理员添加。",
+        );
+        return;
+      }
       toast.error(error.message);
       return;
     }
-    toast.success("Check your inbox for the magic link.");
+    toast.success("Check your inbox for the magic link. / 请查收邮箱中的登录链接。");
   }
 
   async function signInWithPassword(e: React.FormEvent) {
@@ -86,13 +104,32 @@ export default function SignInForm() {
 
       {denied === "not-invited" && (
         <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          That email is not on the admin invite list. Ask Bobby to invite you.
+          That email is not on the admin invite list. Ask a BIA super-admin to
+          invite you.
+          <span className="block text-muted-foreground">
+            该邮箱不在管理员邀请名单中，请联系 BIA 超级管理员为你添加。
+          </span>
+        </div>
+      )}
+
+      {denied === "invite_failed" && (
+        <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          We found your invitation but couldn&apos;t finish setting up your
+          account. Please try the link again. If it keeps failing, ask a BIA
+          super-admin to re-send your invite.
+          <span className="block text-muted-foreground">
+            我们找到了你的邀请，但未能完成账号创建。请重新点击登录链接重试；如果仍然失败，请联系
+            BIA 超级管理员重新发送邀请。
+          </span>
         </div>
       )}
 
       {denied === "auth_error" && (
         <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           Authentication failed. Please try again.
+          <span className="block text-muted-foreground">
+            登录验证失败，请重试。
+          </span>
         </div>
       )}
 

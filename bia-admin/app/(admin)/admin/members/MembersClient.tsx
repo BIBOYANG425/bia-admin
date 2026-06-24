@@ -65,6 +65,16 @@ interface Props {
   invitations: AdminInvitation[];
 }
 
+/** Human-readable age of a pending invite, e.g. "today", "3 days ago". */
+function inviteAge(createdAt: string): string {
+  const created = new Date(createdAt).getTime();
+  if (Number.isNaN(created)) return "";
+  const days = Math.floor((Date.now() - created) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days === 1) return "1 day ago";
+  return `${days} days ago`;
+}
+
 export default function MembersClient({
   currentUserId,
   currentRole,
@@ -78,6 +88,7 @@ export default function MembersClient({
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<Role>("viewer");
   const [submitting, setSubmitting] = useState(false);
+  const [resendingId, setResendingId] = useState<string | null>(null);
 
   const canManage = currentRole === "super_admin";
 
@@ -142,6 +153,24 @@ export default function MembersClient({
     }
     toast.success("Invitation revoked");
     startTransition(() => router.refresh());
+  }
+
+  async function resendInvitation(id: string) {
+    setResendingId(id);
+    try {
+      const res = await fetch(`/api/admin/members/invitations/${id}`, {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast.error(json.error ?? "resend_failed");
+        return;
+      }
+      toast.success("Invitation re-sent");
+      startTransition(() => router.refresh());
+    } finally {
+      setResendingId(null);
+    }
   }
 
   return (
@@ -340,7 +369,7 @@ export default function MembersClient({
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Sent</TableHead>
-                  <TableHead className="w-24" />
+                  <TableHead className="w-44" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -349,17 +378,30 @@ export default function MembersClient({
                     <TableCell className="font-medium">{inv.email}</TableCell>
                     <TableCell>{inv.role}</TableCell>
                     <TableCell className="text-muted-foreground">
-                      {new Date(inv.created_at).toLocaleDateString()}
+                      <span>{new Date(inv.created_at).toLocaleDateString()}</span>
+                      <span className="ml-1 text-xs">
+                        ({inviteAge(inv.created_at)})
+                      </span>
                     </TableCell>
                     <TableCell>
                       {canManage && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => revokeInvitation(inv.id)}
-                        >
-                          Revoke
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={resendingId === inv.id}
+                            onClick={() => resendInvitation(inv.id)}
+                          >
+                            {resendingId === inv.id ? "Sending..." : "Resend"}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => revokeInvitation(inv.id)}
+                          >
+                            Revoke
+                          </Button>
+                        </div>
                       )}
                     </TableCell>
                   </TableRow>
