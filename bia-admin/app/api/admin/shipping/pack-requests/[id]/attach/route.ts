@@ -9,6 +9,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { withRole } from "@/lib/auth/require-role";
+import { logAdminAction } from "@/lib/audit/log";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -115,6 +116,17 @@ export async function POST(request: Request, ctx: RouteContext) {
     // attached < parcelIds.length means some parcels were ineligible
     // (not received_cn) and the RPC skipped them — surface that to the officer.
     const attachedCount = (attached as number | null) ?? 0;
+    await logAdminAction({
+      adminEmail: auth.user.email,
+      action: "pack_request.attach",
+      entityType: "pack_request",
+      entityId: id,
+      payload: {
+        shipment_id: shipmentId,
+        attached: attachedCount,
+        skipped: parcelIds.length - attachedCount,
+      },
+    });
     return NextResponse.json({
       attached: attachedCount,
       skipped: parcelIds.length - attachedCount,

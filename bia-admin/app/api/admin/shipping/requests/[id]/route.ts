@@ -7,6 +7,7 @@ import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { SHIPMENT_REQUEST_STATUS_VALUES } from "@biboyang425/bia-shared/shipping";
 import { withRole } from "@/lib/auth/require-role";
+import { logAdminAction } from "@/lib/audit/log";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -20,7 +21,7 @@ const PatchBody = z.object({
 });
 
 export async function PATCH(request: Request, ctx: RouteContext) {
-  return withRole("editor", async () => {
+  return withRole("editor", async (auth) => {
     const { id } = await ctx.params;
     const json = await request.json().catch(() => null);
     const parsed = PatchBody.safeParse(json);
@@ -64,6 +65,14 @@ export async function PATCH(request: Request, ctx: RouteContext) {
         { status: 500 },
       );
     }
+    await logAdminAction({
+      adminEmail: auth.user.email,
+      action: "shipment_request.update",
+      entityType: "shipment_request",
+      entityId: id,
+      payload: { fields: Object.keys(patch), status: data?.status },
+    });
+
     return NextResponse.json(data);
   });
 }
