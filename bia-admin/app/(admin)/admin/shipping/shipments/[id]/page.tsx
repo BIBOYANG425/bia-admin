@@ -30,8 +30,9 @@ import { StatusProgress } from "@/components/shipping/StatusProgress";
 import { BatchProgress } from "@/components/shipping/BatchProgress";
 import { ParcelStatusPill } from "@/components/shipping/ParcelStatusPill";
 import {
+  PARCEL_BRANCH_STATUSES,
   PARCEL_STATUS_META,
-  PARCEL_STATUS_VALUES,
+  PARCEL_STEPS,
   SHIPMENT_STATUS_VALUES,
   SHIPPING_METHOD_META,
   SHIPMENT_STEPS,
@@ -41,6 +42,16 @@ import {
   type Shipment,
   type ShipmentStatus,
 } from "@biboyang425/bia-shared/shipping";
+
+// Forward happy-path bulk-advance targets: every step AFTER 'expected'
+// (received_cn → picked_up). A parcel is never bulk-created/regressed to
+// 'expected', so it isn't an advance target. Branch/terminal states
+// (lost/returned/disputed) are kept separate and require an explicit confirm
+// since they mass-mutate the whole batch off the happy path.
+const FORWARD_ADVANCE_TARGETS: ParcelStatus[] = PARCEL_STEPS.filter(
+  (s) => s !== "expected",
+);
+const BRANCH_TARGET_SET = new Set<ParcelStatus>(PARCEL_BRANCH_STATUSES);
 
 const SHIPMENT_STATUS_LABELS: Record<ShipmentStatus, string> = {
   forming: "组建中",
@@ -251,6 +262,18 @@ export default function AdminShipmentDetailPage() {
 
   const advanceParcels = async () => {
     if (!bulkStatus || parcels.length === 0) return;
+    // Branch/terminal targets (lost/returned/disputed) mass-mutate the entire
+    // batch off the happy path — make the officer confirm explicitly.
+    if (BRANCH_TARGET_SET.has(bulkStatus)) {
+      const label = PARCEL_STATUS_META[bulkStatus].label;
+      if (
+        !window.confirm(
+          `确认把本批 ${parcels.length} 个包裹全部标记为「${label}」？这是分支/终态，会影响整批，且无法批量回退。`,
+        )
+      ) {
+        return;
+      }
+    }
     setBulkBusy(true);
     try {
       const res = await fetch(
@@ -465,8 +488,9 @@ export default function AdminShipmentDetailPage() {
           </CardHeader>
           <CardContent className="space-y-2 p-4 pt-0">
             <p className="text-xs text-muted-foreground">
-              一键把本批 {parcels.length} 个包裹全部推进到所选状态（默认只前进，跳过
-              丢失/退回/已在该状态的包裹）。审计照常记录；每个推进会给学生入队一条状态通知（通知功能开启后下发）。
+              一键把本批 {parcels.length} 个包裹沿正常流程推进到所选状态（只前进，
+              跳过已在该状态/已超前/分支状态的包裹）。分支/终态（丢失/退回/待核实）会影响整批，
+              需二次确认。审计照常记录；每个推进会给学生入队一条状态通知（通知功能开启后下发）。
             </p>
             <div className="flex flex-col gap-2 sm:flex-row">
               <select
@@ -477,11 +501,20 @@ export default function AdminShipmentDetailPage() {
                 className="h-9 min-w-0 flex-1 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
               >
                 <option value="">选目标状态…</option>
-                {PARCEL_STATUS_VALUES.map((s) => (
-                  <option key={s} value={s}>
-                    {PARCEL_STATUS_META[s].label}
-                  </option>
-                ))}
+                <optgroup label="正常推进">
+                  {FORWARD_ADVANCE_TARGETS.map((s) => (
+                    <option key={s} value={s}>
+                      {PARCEL_STATUS_META[s].label}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="分支 / 终态（需确认）">
+                  {PARCEL_BRANCH_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {PARCEL_STATUS_META[s].label}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
               <Button
                 type="button"
