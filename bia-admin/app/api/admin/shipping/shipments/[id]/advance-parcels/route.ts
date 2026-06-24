@@ -16,11 +16,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
-import {
-  PARCEL_STATUS_VALUES,
-  PARCEL_STEPS,
-  type ParcelStatus,
-} from "@biboyang425/bia-shared/shipping";
+import { PARCEL_STATUS_VALUES } from "@biboyang425/bia-shared/shipping";
 import { withRole } from "@/lib/auth/require-role";
 import { logAdminAction } from "@/lib/audit/log";
 
@@ -53,7 +49,6 @@ export async function POST(request: Request, ctx: RouteContext) {
     // Default to forward-only so a "pickup_open" bulk push never drags an
     // already-picked_up parcel backward.
     const onlyForward = parsed.data.only_forward !== false;
-    const targetIdx = PARCEL_STEPS.indexOf(target as ParcelStatus);
 
     const admin = createBiaServiceRoleClient();
 
@@ -66,67 +61,39 @@ export async function POST(request: Request, ctx: RouteContext) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
 
-    const { data: parcels, error } = await admin
-      .from("parcels")
-      .select("id, status")
-      .eq("shipment_id", id);
+    // Advance the whole flight in ONE transaction (atomic) — see
+    // admin_advance_parcels. It applies the same skip rules: skip parcels
+    // already at the target, and (forward-only, the default) skip branch states
+    // / parcels at or past the target. No mid-batch half-advance.
+    const { data: result, error } = await admin.rpc("admin_advance_parcels", {
+      p_shipment_id: id,
+      p_target: target,
+      p_only_forward: onlyForward,
+      p_actor_user_id: auth.user.id,
+    });
     if (error) {
       return NextResponse.json(
-        { error: "list_failed", details: error.message },
+        { error: "advance_failed", details: error.message },
         { status: 500 },
       );
     }
-
-    let updated = 0;
-    let skipped = 0;
-    const failed: string[] = [];
-
-    // Sequential: admin_patch_parcel sets per-transaction actor GUCs on the
-    // pooled connection, so we avoid concurrent calls clobbering each other.
-    for (const p of parcels ?? []) {
-      const curIdx = PARCEL_STEPS.indexOf(p.status as ParcelStatus);
-      // Skip if already at target, or (forward-only) if off the happy path
-      // (branch statuses → curIdx<0) or already at/past the target.
-      if (p.status === target) {
-        skipped++;
-        continue;
-      }
-      if (onlyForward && targetIdx >= 0 && (curIdx < 0 || curIdx >= targetIdx)) {
-        skipped++;
-        continue;
-      }
-      const { error: rpcErr } = await admin.rpc("admin_patch_parcel", {
-        p_id: p.id,
-        p_actor_user_id: auth.user.id,
-        p_patch: { status: target },
-      });
-      if (rpcErr) {
-        failed.push(p.id);
-        continue;
-      }
-      updated++;
-    }
+    const r = (result ?? {}) as {
+      total?: number;
+      updated?: number;
+      skipped?: number;
+    };
+    const updated = r.updated ?? 0;
+    const skipped = r.skipped ?? 0;
+    const total = r.total ?? 0;
 
     await logAdminAction({
       adminEmail: auth.user.email,
       action: "shipment.advance_parcels",
       entityType: "shipment",
       entityId: id,
-      payload: {
-        target,
-        only_forward: onlyForward,
-        updated,
-        skipped,
-        failed: failed.length,
-        total: parcels?.length ?? 0,
-      },
+      payload: { target, only_forward: onlyForward, updated, skipped, failed: 0, total },
     });
 
-    return NextResponse.json({
-      updated,
-      skipped,
-      failed: failed.length,
-      total: parcels?.length ?? 0,
-    });
+    return NextResponse.json({ updated, skipped, failed: 0, total });
   });
 }
