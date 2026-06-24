@@ -5,6 +5,7 @@
 // Ported from bia-roommate (Phase-3 slice 7), restyled to shadcn.
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,7 +24,6 @@ export default function AdminShippingRoutesPage() {
   const [drafts, setDrafts] = useState<Record<string, RouteDraft>>({});
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,8 +65,7 @@ export default function AdminShippingRoutesPage() {
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        setToast(err.error ?? "保存失败");
-        setTimeout(() => setToast(null), 1800);
+        toast.error(err.error ?? "保存失败");
         return;
       }
       const updated = (await res.json()) as ShippingRoute;
@@ -76,8 +75,7 @@ export default function AdminShippingRoutesPage() {
         delete nextState[id];
         return nextState;
       });
-      setToast("已保存");
-      setTimeout(() => setToast(null), 1500);
+      toast.success("已保存");
     } finally {
       setSavingId(null);
     }
@@ -105,12 +103,6 @@ export default function AdminShippingRoutesPage() {
 
   return (
     <div className="space-y-6 p-8">
-      {toast && (
-        <div className="fixed right-4 top-20 z-50 rounded-md border bg-foreground px-4 py-2 text-sm text-background shadow-lg">
-          {toast}
-        </div>
-      )}
-
       <header className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight">集运 · 专线</h1>
         <p className="text-sm text-muted-foreground">

@@ -4,14 +4,16 @@
 //         admin_patch_parcel RPC (editor+). The RPC sets actor GUCs so the
 //         DB-side parcel_events log stamps actor_role='admin' — passing
 //         p_actor_user_id: auth.user.id keeps that cross-app audit chain intact.
-// Ported from bia-roommate (Phase-3 slice 3a). writeAudit intentionally
-// deferred: admin_audit_log.entity_type has no 'parcel' value yet (DB change).
+// Ported from bia-roommate (Phase-3 slice 3a). Audited via writeAudit below —
+// admin_audit_log.entity_type is an open string now (see lib/admin/audit-log.ts),
+// so the parcel-PATCH deferral is gone.
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { PARCEL_STATUS_VALUES } from "@biboyang425/bia-shared/shipping";
 import { withRole } from "@/lib/auth/require-role";
+import { writeAudit } from "@/lib/admin/audit-log";
 import {
   checkTransition,
   PARCEL_TRANSITION,
@@ -163,6 +165,15 @@ export async function PATCH(request: Request, ctx: RouteContext) {
     if (!data) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
+
+    await writeAudit({
+      admin_email: auth.user.email,
+      action: "parcel.update",
+      entity_type: "parcel",
+      entity_id: id,
+      payload: { fields: Object.keys(patch) },
+    });
+
     return NextResponse.json(data);
   });
 }

@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,7 +57,6 @@ export default function AdminPackRequestsPage() {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [attachingId, setAttachingId] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
   const [filter, setFilter] = useState<PackRequestStatus | "">("");
 
   useEffect(() => {
@@ -111,11 +111,6 @@ export default function AdminPackRequestsPage() {
     }
   };
 
-  const showToast = (msg: string, ms = 1500) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), ms);
-  };
-
   const attachToShipment = async (requestId: string) => {
     const shipmentId = pickedShipment[requestId];
     if (!shipmentId) return;
@@ -131,14 +126,13 @@ export default function AdminPackRequestsPage() {
       );
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        showToast(err.error ?? "附加失败", 1800);
+        toast.error(err.error ?? "附加失败");
         return;
       }
       const data = (await res.json()) as { attached: number; skipped?: number };
-      showToast(
+      toast.success(
         `已附加 ${data.attached} 个包裹 · 申请已标记 approved` +
           (data.skipped ? ` · 跳过 ${data.skipped} 个（非「仓库签收」状态）` : ""),
-        2500,
       );
       setPickedShipment((prev) => {
         const nextState = { ...prev };
@@ -147,7 +141,7 @@ export default function AdminPackRequestsPage() {
       });
       await reload();
     } catch {
-      showToast("附加失败", 1800);
+      toast.error("附加失败");
     } finally {
       setAttachingId(null);
     }
@@ -169,7 +163,7 @@ export default function AdminPackRequestsPage() {
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        showToast(err.error ?? "保存失败", 1800);
+        toast.error(err.error ?? "保存失败");
         return;
       }
       setDrafts((prev) => {
@@ -177,10 +171,10 @@ export default function AdminPackRequestsPage() {
         delete nextState[id];
         return nextState;
       });
-      showToast("已保存");
+      toast.success("已保存");
       await reload();
     } catch {
-      showToast("保存失败", 1800);
+      toast.error("保存失败");
     } finally {
       setSavingId(null);
     }
@@ -188,12 +182,6 @@ export default function AdminPackRequestsPage() {
 
   return (
     <div className="space-y-6 p-8">
-      {toast && (
-        <div className="fixed right-4 top-20 z-50 rounded-md border bg-foreground px-4 py-2 text-sm text-background shadow-lg">
-          {toast}
-        </div>
-      )}
-
       <header className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-2xl font-bold tracking-tight">集运 · 打包申请</h1>
         <p className="text-xs text-muted-foreground">

@@ -11,7 +11,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { withRole } from "@/lib/auth/require-role";
-import { logAdminAction } from "@/lib/audit/log";
+import { writeAudit } from "@/lib/admin/audit-log";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 const Body = z.object({ code: z.string().trim().min(1).max(64) });
@@ -103,11 +103,11 @@ export async function POST(request: Request) {
     }
 
     // Best-effort audit (admin_audit_log.entity_type is free text).
-    await logAdminAction({
-      adminEmail: auth.user.email,
+    await writeAudit({
+      admin_email: auth.user.email,
       action: "parcel.pickup_verify",
-      entityType: "parcel",
-      entityId: parcel.id,
+      entity_type: "parcel",
+      entity_id: parcel.id,
       payload: { code },
     });
 

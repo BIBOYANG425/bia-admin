@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { withRole } from "@/lib/auth/require-role";
+import { writeAudit } from "@/lib/admin/audit-log";
 
 const CreateBody = z
   .object({
@@ -43,10 +44,13 @@ export async function GET() {
     const ids = (events ?? []).map((e) => e.id as string);
     const counts = new Map<string, number>();
     if (ids.length > 0) {
+      // Registered = RSVP'd OR checked in (check-in overwrites source
+      // rsvp→checkin, so counting only 'rsvp' undercounts). Matches the
+      // events list page.
       const { data: att } = await admin
         .from("event_attendance")
         .select("event_id")
-        .eq("source", "rsvp")
+        .in("source", ["rsvp", "checkin"])
         .in("event_id", ids);
       for (const a of att ?? []) {
         const k = a.event_id as string;
@@ -63,7 +67,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  return withRole("editor", async () => {
+  return withRole("editor", async (auth) => {
     const json = await request.json().catch(() => null);
     const parsed = CreateBody.safeParse(json);
     if (!parsed.success) {
@@ -97,6 +101,15 @@ export async function POST(request: Request) {
         { status: 500 },
       );
     }
+
+    await writeAudit({
+      admin_email: auth.user.email,
+      action: "event.create",
+      entity_type: "event",
+      entity_id: (data?.id as string) ?? null,
+      payload: { title: b.title.trim() },
+    });
+
     return NextResponse.json(data);
   });
 }

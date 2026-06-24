@@ -9,7 +9,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { withRole } from "@/lib/auth/require-role";
-import { logAdminAction } from "@/lib/audit/log";
+import { writeAudit } from "@/lib/admin/audit-log";
 
 const Body = z.object({
   items: z
@@ -82,11 +82,11 @@ export async function POST(request: Request) {
       updated++;
     }
 
-    await logAdminAction({
-      adminEmail: auth.user.email,
+    await writeAudit({
+      admin_email: auth.user.email,
       action: "parcel.bulk_receive",
-      entityType: "parcel",
-      entityId: null,
+      entity_type: "parcel",
+      entity_id: null,
       payload: {
         count: parsed.data.items.length,
         updated,

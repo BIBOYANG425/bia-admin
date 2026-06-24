@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
+import { roleAtLeast } from "@biboyang425/bia-shared";
 import {
   PARCEL_STATUS_META,
   PARCEL_STATUS_VALUES,
@@ -20,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { ParcelStatusPill } from "@/components/shipping/ParcelStatusPill";
 import { requireRole } from "@/lib/auth/require-role";
+import { sanitizeSearchTerm } from "@/lib/shipping/search-filter";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +29,12 @@ const PAGE_SIZE = 50;
 const STATUS_SET = new Set<string>(PARCEL_STATUS_VALUES);
 
 interface PageProps {
-  searchParams: Promise<{ status?: string; search?: string; page?: string }>;
+  searchParams: Promise<{
+    status?: string;
+    search?: string;
+    member_id?: string;
+    page?: string;
+  }>;
 }
 
 function formatDate(value: string): string {
@@ -39,12 +46,14 @@ function formatDate(value: string): string {
 }
 
 export default async function AdminParcelsPage({ searchParams }: PageProps) {
-  await requireRole("viewer");
+  const { role } = await requireRole("viewer");
+  const canWrite = roleAtLeast(role, "editor");
   const sp = await searchParams;
 
   const status: ParcelStatus | "" =
     sp.status && STATUS_SET.has(sp.status) ? (sp.status as ParcelStatus) : "";
   const search = (sp.search ?? "").trim();
+  const memberId = (sp.member_id ?? "").trim();
   const page = Math.max(0, Number(sp.page ?? 0) || 0);
 
   const admin = createBiaServiceRoleClient();
@@ -54,9 +63,15 @@ export default async function AdminParcelsPage({ searchParams }: PageProps) {
     .order("created_at", { ascending: false });
 
   if (status) query = query.eq("status", status);
-  if (search) {
+  // Exact member_id filter — a structured control distinct from free-text search
+  // (the API route already supports member_id; this surfaces it in the UI).
+  if (memberId) query = query.eq("member_id", memberId);
+  // Sanitize before interpolating into the PostgREST .or() grammar (matches the
+  // API route; raw input could otherwise inject filter conditions).
+  const q = sanitizeSearchTerm(search);
+  if (q) {
     query = query.or(
-      `description.ilike.%${search}%,tracking_cn.ilike.%${search}%,member_id.ilike.%${search}%`,
+      `description.ilike.%${q}%,tracking_cn.ilike.%${q}%,member_id.ilike.%${q}%`,
     );
   }
 
@@ -75,7 +90,19 @@ export default async function AdminParcelsPage({ searchParams }: PageProps) {
     const qs = new URLSearchParams();
     if (status) qs.set("status", status);
     if (search) qs.set("search", search);
+    if (memberId) qs.set("member_id", memberId);
     if (target > 0) qs.set("page", String(target));
+    const s = qs.toString();
+    return s ? `?${s}` : "?";
+  }
+
+  // Quick "到达美国" filter affordance — preserves an active member_id filter,
+  // toggles the status filter on/off.
+  const arrivedUsActive = status === "arrived_us";
+  function arrivedUsHref(): string {
+    const qs = new URLSearchParams();
+    if (!arrivedUsActive) qs.set("status", "arrived_us");
+    if (memberId) qs.set("member_id", memberId);
     const s = qs.toString();
     return s ? `?${s}` : "?";
   }
@@ -85,9 +112,27 @@ export default async function AdminParcelsPage({ searchParams }: PageProps) {
 
   return (
     <div className="p-8 space-y-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold tracking-tight">集运 · 包裹</h1>
-        <p className="text-sm text-muted-foreground">{total} 个包裹</p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-bold tracking-tight">集运 · 包裹</h1>
+          <p className="text-sm text-muted-foreground">{total} 个包裹</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            asChild
+            variant={arrivedUsActive ? "default" : "outline"}
+            size="sm"
+          >
+            <Link href={arrivedUsHref()}>
+              {arrivedUsActive ? "✓ 到达美国" : "到达美国"}
+            </Link>
+          </Button>
+          {canWrite && (
+            <Button asChild size="sm">
+              <Link href="/admin/shipping/parcels/new">+ 新建包裹</Link>
+            </Button>
+          )}
+        </div>
       </header>
 
       {/* Filter bar — GET form, server-rendered, no client JS */}
@@ -109,6 +154,17 @@ export default async function AdminParcelsPage({ searchParams }: PageProps) {
               </option>
             ))}
           </select>
+        </div>
+        <div className="flex flex-col gap-1 sm:w-48">
+          <label htmlFor="member_id" className="text-xs text-muted-foreground">
+            Member ID（精确）
+          </label>
+          <Input
+            id="member_id"
+            name="member_id"
+            defaultValue={memberId}
+            placeholder="如 BIA-1234"
+          />
         </div>
         <div className="flex flex-1 flex-col gap-1">
           <label htmlFor="search" className="text-xs text-muted-foreground">

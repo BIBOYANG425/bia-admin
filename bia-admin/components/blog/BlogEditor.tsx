@@ -2,11 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
+  CalendarClock,
   CheckCircle2,
   Code2,
   Eye,
   FileUp,
+  History,
   Loader2,
   RotateCcw,
   Save,
@@ -55,7 +58,9 @@ interface ArticleInitial {
   tags: string[];
   cover_image_url: string | null;
   updated_at?: string;
+  scheduled_publish_at?: string | null;
   rejected_at?: string | null;
+  rejected_by?: string | null;
   rejection_reason?: string | null;
 }
 
@@ -136,6 +141,28 @@ function getErrorMessage(payload: ApiResponse, fallback: string): string {
   return payload.error ?? payload.message ?? fallback;
 }
 
+// <input type="datetime-local"> works in local time without a zone. Convert an
+// ISO timestamp to the "YYYY-MM-DDTHH:mm" the input expects, anchored to the
+// browser's local zone.
+function isoToLocalInput(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate(),
+  )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+// Convert a datetime-local value (local time, no zone) back to a UTC ISO string
+// the API stores. Returns null for an empty input.
+function localInputToIso(value: string): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
 function StatusPill({ status }: { status: ArticleStatus }) {
   return (
     <span
@@ -149,9 +176,11 @@ function StatusPill({ status }: { status: ArticleStatus }) {
 export function BlogEditor({
   initial,
   role,
+  rejectedByName = null,
 }: {
   initial?: ArticleInitial | null;
   role: Role;
+  rejectedByName?: string | null;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState(initial?.title ?? "");
@@ -165,6 +194,9 @@ export function BlogEditor({
     initial?.cover_image_url ?? null,
   );
   const [html, setHtml] = useState(initial?.html_clean ?? "");
+  const [scheduledAt, setScheduledAt] = useState(
+    isoToLocalInput(initial?.scheduled_publish_at),
+  );
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [htmlDragOver, setHtmlDragOver] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
@@ -356,8 +388,42 @@ export function BlogEditor({
     }
   }
 
+  // Persist (or clear) the publish schedule independently of the body save, so
+  // an officer can schedule without re-touching content. PATCHes only the
+  // scheduled_publish_at field.
+  async function saveSchedule(nextValue: string) {
+    if (!id || !canSchedule) return;
+    const iso = localInputToIso(nextValue);
+
+    setPendingAction("schedule");
+    try {
+      const res = await fetch(`/api/admin/articles/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ scheduled_publish_at: iso }),
+      });
+      const payload = (await res.json().catch(() => ({}))) as ApiResponse;
+
+      if (!res.ok) {
+        throw new Error(getErrorMessage(payload, "schedule_failed"));
+      }
+
+      toast.success(iso ? "Publish scheduled" : "Schedule cleared");
+      router.refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
   const saving = pendingAction === "save";
   const busy = pendingAction !== null;
+  // Scheduling makes sense for not-yet-published articles. Once published the
+  // manual flow already governs visibility, so the input is hidden.
+  const canSchedule = Boolean(
+    id && canEdit && (status === "draft" || status === "in_review"),
+  );
 
   return (
     <div className="space-y-6">
@@ -430,7 +496,7 @@ export function BlogEditor({
             <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-700" />
             <div className="text-sm text-rose-900">
               <p className="font-medium">
-                Sent back to draft
+                {rejectedByName ? `Sent back by ${rejectedByName}` : "Sent back to draft"}
                 <span className="ml-2 text-xs font-normal text-rose-700">
                   {new Date(initial.rejected_at).toLocaleString()}
                 </span>
@@ -449,6 +515,63 @@ export function BlogEditor({
               </p>
             </div>
           </div>
+        </div>
+      )}
+
+      {canSchedule && (
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-2">
+            <CalendarClock className="h-4 w-4 text-muted-foreground" />
+            <Label htmlFor="article-schedule">Scheduled publish</Label>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Set a future time to auto-publish this article. Leave empty (or
+            clear) to publish manually. Times are in your local timezone.
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Input
+              id="article-schedule"
+              type="datetime-local"
+              value={scheduledAt}
+              onChange={(event) => setScheduledAt(event.target.value)}
+              disabled={busy}
+              className="w-full sm:max-w-xs"
+            />
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void saveSchedule(scheduledAt)}
+                disabled={busy}
+              >
+                {pendingAction === "schedule" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CalendarClock className="h-4 w-4" />
+                )}
+                Save schedule
+              </Button>
+              {initial?.scheduled_publish_at && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setScheduledAt("");
+                    void saveSchedule("");
+                  }}
+                  disabled={busy}
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+          </div>
+          {initial?.scheduled_publish_at && (
+            <p className="mt-2 text-xs text-emerald-700">
+              Currently scheduled for{" "}
+              {new Date(initial.scheduled_publish_at).toLocaleString()}.
+            </p>
+          )}
         </div>
       )}
 
@@ -641,6 +764,15 @@ export function BlogEditor({
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+          )}
+
+          {id && (
+            <Button asChild type="button" variant="ghost">
+              <Link href={`/admin/blog/${id}/history`}>
+                <History className="h-4 w-4" />
+                History
+              </Link>
+            </Button>
           )}
 
           <div className="ml-auto text-xs text-muted-foreground">

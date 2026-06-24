@@ -8,7 +8,7 @@ import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { SHIPMENT_STATUS_VALUES } from "@biboyang425/bia-shared/shipping";
 import { withRole } from "@/lib/auth/require-role";
-import { logAdminAction } from "@/lib/audit/log";
+import { writeAudit } from "@/lib/admin/audit-log";
 
 const SHIPMENT_STATUS_SET = new Set<string>(SHIPMENT_STATUS_VALUES);
 
@@ -75,11 +75,11 @@ export async function POST(request: Request) {
         { status: 500 },
       );
     }
-    await logAdminAction({
-      adminEmail: auth.user.email,
+    await writeAudit({
+      admin_email: auth.user.email,
       action: "shipment.create",
-      entityType: "shipment",
-      entityId: data.id,
+      entity_type: "shipment",
+      entity_id: data.id,
       payload: { name, carrier, status: data.status },
     });
 

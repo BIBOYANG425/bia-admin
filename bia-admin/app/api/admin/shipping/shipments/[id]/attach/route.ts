@@ -11,7 +11,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { withRole } from "@/lib/auth/require-role";
-import { logAdminAction } from "@/lib/audit/log";
+import { writeAudit } from "@/lib/admin/audit-log";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -72,11 +72,11 @@ export async function POST(request: Request, ctx: RouteContext) {
     // skipped them (no backward move) — report the skipped count.
     const updatedCount = (data as number | null) ?? 0;
     const skippedCount = parsed.data.parcel_ids.length - updatedCount;
-    await logAdminAction({
-      adminEmail: auth.user.email,
+    await writeAudit({
+      admin_email: auth.user.email,
       action: "shipment.attach",
-      entityType: "shipment",
-      entityId: id,
+      entity_type: "shipment",
+      entity_id: id,
       payload: {
         shipment_id: id,
         requested: parsed.data.parcel_ids.length,

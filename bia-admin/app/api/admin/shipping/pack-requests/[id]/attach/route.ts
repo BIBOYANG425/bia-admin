@@ -10,7 +10,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { withRole } from "@/lib/auth/require-role";
-import { logAdminAction } from "@/lib/audit/log";
+import { writeAudit } from "@/lib/admin/audit-log";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -126,11 +126,11 @@ export async function POST(request: Request, ctx: RouteContext) {
     // the RPC skipped them — surface that to the officer.
     const attachedCount = r.attached ?? 0;
     const skipped = (r.total ?? 0) - attachedCount;
-    await logAdminAction({
-      adminEmail: auth.user.email,
+    await writeAudit({
+      admin_email: auth.user.email,
       action: "pack_request.attach",
-      entityType: "pack_request",
-      entityId: id,
+      entity_type: "pack_request",
+      entity_id: id,
       payload: { shipment_id: shipmentId, attached: attachedCount, skipped },
     });
     return NextResponse.json({

@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { requireRoleMock, fromMock, rangeMock } = vi.hoisted(() => ({
-  requireRoleMock: vi.fn(),
-  fromMock: vi.fn(),
-  rangeMock: vi.fn(),
-}));
+const { requireRoleMock, fromMock, rangeMock, insertSingleMock } = vi.hoisted(
+  () => ({
+    requireRoleMock: vi.fn(),
+    fromMock: vi.fn(),
+    rangeMock: vi.fn(),
+    insertSingleMock: vi.fn(),
+  }),
+);
 
 vi.mock("@/lib/auth/require-role", () => ({
   withRole: async (_min: unknown, handler: any) => {
@@ -29,11 +32,13 @@ vi.mock("@/lib/auth/require-role", () => ({
   },
 }));
 
+vi.mock("@/lib/admin/audit-log", () => ({ writeAudit: vi.fn() }));
+
 vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
   createBiaServiceRoleClient: () => ({ from: fromMock }),
 }));
 
-import { GET } from "../route";
+import { GET, POST } from "../route";
 
 const viewer = {
   user: { id: "v2", email: "viewer@uscbia.com" },
@@ -41,8 +46,22 @@ const viewer = {
   adminUser: { id: "v2", email: "viewer@uscbia.com" },
 };
 
+const editor = {
+  user: { id: "e1", email: "editor@uscbia.com" },
+  role: "editor" as const,
+  adminUser: { id: "e1", email: "editor@uscbia.com" },
+};
+
 function getReq(qs = "") {
   return new Request(`http://localhost/api/admin/shipping/parcels${qs}`);
+}
+
+function postReq(body: unknown) {
+  return new Request("http://localhost/api/admin/shipping/parcels", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 describe("GET /api/admin/shipping/parcels", () => {
@@ -98,5 +117,96 @@ describe("GET /api/admin/shipping/parcels", () => {
     const body = await res.json();
     expect(body.limit).toBe(200);
     expect(rangeMock).toHaveBeenCalledWith(0, 199);
+  });
+});
+
+describe("POST /api/admin/shipping/parcels", () => {
+  beforeEach(() => {
+    requireRoleMock.mockReset();
+    fromMock.mockReset();
+    insertSingleMock.mockReset();
+    requireRoleMock.mockResolvedValue(editor);
+    insertSingleMock.mockResolvedValue({ data: { id: "new-1" }, error: null });
+    fromMock.mockImplementation(() => ({
+      insert: () => ({ select: () => ({ single: insertSingleMock }) }),
+    }));
+  });
+
+  it("rejects a body missing member_id", async () => {
+    const res = await POST(postReq({ description: "衣服一箱" }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("invalid_body");
+    expect(insertSingleMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an out-of-range status (not expected/received_cn)", async () => {
+    const res = await POST(
+      postReq({ member_id: "BIA-1", description: "x", status: "picked_up" }),
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("invalid_body");
+    expect(insertSingleMock).not.toHaveBeenCalled();
+  });
+
+  it("creates an expected parcel without received_at", async () => {
+    let captured: Record<string, unknown> | null = null;
+    fromMock.mockImplementation(() => ({
+      insert: (p: Record<string, unknown>) => {
+        captured = p;
+        return { select: () => ({ single: insertSingleMock }) };
+      },
+    }));
+
+    const res = await POST(
+      postReq({ member_id: "BIA-1", description: "衣服一箱" }),
+    );
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ id: "new-1" });
+    expect(captured).toMatchObject({
+      member_id: "BIA-1",
+      description: "衣服一箱",
+      status: "expected",
+    });
+    expect(captured).not.toHaveProperty("received_at");
+  });
+
+  it("stamps received_at when status is received_cn", async () => {
+    let captured: Record<string, unknown> | null = null;
+    fromMock.mockImplementation(() => ({
+      insert: (p: Record<string, unknown>) => {
+        captured = p;
+        return { select: () => ({ single: insertSingleMock }) };
+      },
+    }));
+
+    const res = await POST(
+      postReq({
+        member_id: "BIA-2",
+        description: "电子产品",
+        status: "received_cn",
+        tracking_cn: "SF123",
+        weight_grams: 1500,
+      }),
+    );
+    expect(res.status).toBe(201);
+    expect(captured).toMatchObject({
+      member_id: "BIA-2",
+      status: "received_cn",
+      tracking_cn: "SF123",
+      weight_grams: 1500,
+    });
+    expect(typeof captured!.received_at).toBe("string");
+  });
+
+  it("surfaces a DB insert error as create_failed", async () => {
+    insertSingleMock.mockResolvedValue({
+      data: null,
+      error: { message: "boom" },
+    });
+    const res = await POST(
+      postReq({ member_id: "BIA-3", description: "x" }),
+    );
+    expect(res.status).toBe(500);
+    expect((await res.json()).error).toBe("create_failed");
   });
 });

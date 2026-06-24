@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +32,6 @@ export default function AdminShippingContactsPage() {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,11 +52,6 @@ export default function AdminShippingContactsPage() {
     };
   }, []);
 
-  const showToast = (msg: string, ms = 1500) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), ms);
-  };
-
   const patchContact = async (id: string) => {
     const draft = drafts[id];
     if (!draft) return;
@@ -69,7 +64,7 @@ export default function AdminShippingContactsPage() {
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        showToast(err.error ?? "保存失败", 1800);
+        toast.error(err.error ?? "保存失败");
         return;
       }
       const updated = (await res.json()) as ShippingContact;
@@ -79,7 +74,7 @@ export default function AdminShippingContactsPage() {
         delete nextState[id];
         return nextState;
       });
-      showToast("已保存");
+      toast.success("已保存");
     } finally {
       setSavingId(null);
     }
@@ -94,7 +89,7 @@ export default function AdminShippingContactsPage() {
 
   const uploadQr = async (id: string, file: File) => {
     if (file.size > 2 * 1024 * 1024) {
-      showToast("二维码最大 2MB");
+      toast.error("二维码最大 2MB");
       return;
     }
     setUploadingId(id);
@@ -108,12 +103,12 @@ export default function AdminShippingContactsPage() {
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        showToast("上传失败：" + (err.error ?? ""), 2000);
+        toast.error("上传失败：" + (err.error ?? ""));
         return;
       }
       const { url } = (await res.json()) as { url: string };
       updateDraft(id, { qr_code_url: url });
-      showToast("二维码已上传，记得点保存", 2000);
+      toast.success("二维码已上传，记得点保存");
     } finally {
       setUploadingId(null);
     }
@@ -134,12 +129,6 @@ export default function AdminShippingContactsPage() {
 
   return (
     <div className="space-y-6 p-8">
-      {toast && (
-        <div className="fixed right-4 top-20 z-50 rounded-md border bg-foreground px-4 py-2 text-sm text-background shadow-lg">
-          {toast}
-        </div>
-      )}
-
       <header className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight">集运 · 联系渠道</h1>
         <p className="text-sm text-muted-foreground">

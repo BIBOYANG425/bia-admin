@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { roleAtLeast, type Role } from "@biboyang425/bia-shared";
 import { cn } from "@/lib/utils";
 import {
   ADMIN_SECTIONS,
@@ -10,15 +11,22 @@ import {
   type AdminGroup,
 } from "@/lib/admin/sections";
 
-export default function SidebarNav() {
+export default function SidebarNav({ role }: { role: Role }) {
   const pathname = usePathname();
   const grouped: Record<AdminGroup, AdminSection[]> = {
     content: [],
     community: [],
     operations: [],
     people: [],
+    system: [],
   };
-  for (const s of ADMIN_SECTIONS) grouped[s.group].push(s);
+  // Hide sections the current role can't even view (write-only pages). Most
+  // sections default to "viewer" (everyone); per-control write-gating inside a
+  // page is handled by each surface.
+  for (const s of ADMIN_SECTIONS) {
+    if (s.minRole && !roleAtLeast(role, s.minRole)) continue;
+    grouped[s.group].push(s);
+  }
 
   return (
     <nav className="flex-1 space-y-6">

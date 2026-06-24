@@ -7,7 +7,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { withRole } from "@/lib/auth/require-role";
-import { logAdminAction } from "@/lib/audit/log";
+import { writeAudit } from "@/lib/admin/audit-log";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -72,11 +72,11 @@ export async function PATCH(request: Request, ctx: RouteContext) {
       );
     }
 
-    await logAdminAction({
-      adminEmail: auth.user.email,
+    await writeAudit({
+      admin_email: auth.user.email,
       action: "parcel.payment_update",
-      entityType: "parcel",
-      entityId: id,
+      entity_type: "parcel",
+      entity_id: id,
       payload: {
         amount_owed_cents: body.amount_owed_cents,
         paid: body.paid,

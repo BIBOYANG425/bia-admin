@@ -10,7 +10,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { toast } from "sonner";
 
+import { useCanWrite } from "@/lib/auth/role-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,6 +62,7 @@ function fmtTime(iso: string): string {
 
 export default function AdminParcelDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const canWrite = useCanWrite();
   const [parcel, setParcel] = useState<Parcel | null>(null);
   const [events, setEvents] = useState<ParcelEvent[]>([]);
   const [shipment, setShipment] = useState<Shipment | null>(null);
@@ -75,7 +78,7 @@ export default function AdminParcelDetailPage() {
   const [draftH, setDraftH] = useState("");
   const [draftNotes, setDraftNotes] = useState("");
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   const loadParcel = useCallback(async () => {
     setLoading(true);
@@ -134,8 +137,7 @@ export default function AdminParcelDetailPage() {
         setError(err.error ?? "保存失败");
         return;
       }
-      setToast("已保存");
-      setTimeout(() => setToast(null), 1500);
+      toast.success("已保存");
       await loadParcel();
     } catch {
       setError("保存失败");
@@ -165,8 +167,7 @@ export default function AdminParcelDetailPage() {
     }
 
     if (Object.keys(patch).length === 0) {
-      setToast("没有改动");
-      setTimeout(() => setToast(null), 1200);
+      toast("没有改动");
       return;
     }
     await handleSave(patch);
@@ -181,6 +182,28 @@ export default function AdminParcelDetailPage() {
       patch.received_at = new Date().toISOString();
     }
     await handleSave(patch);
+  };
+
+  const handleConfirmPickup = async () => {
+    if (!parcel) return;
+    setConfirming(true);
+    try {
+      const res = await fetch(
+        `/api/admin/shipping/parcels/${id}/confirm-pickup`,
+        { method: "POST" },
+      );
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(err.error ?? "核销失败");
+        return;
+      }
+      toast.success("已确认取件");
+      await loadParcel();
+    } catch {
+      toast.error("核销失败");
+    } finally {
+      setConfirming(false);
+    }
   };
 
   if (loading) {
@@ -199,12 +222,6 @@ export default function AdminParcelDetailPage() {
 
   return (
     <div className="space-y-6 p-8">
-      {toast && (
-        <div className="fixed right-4 top-20 z-50 rounded-md border bg-foreground px-4 py-2 text-sm text-background shadow-lg">
-          {toast}
-        </div>
-      )}
-
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link
@@ -230,6 +247,45 @@ export default function AdminParcelDetailPage() {
       </div>
 
       <StatusProgress steps={steps} current={parcel.status} branches={branches} />
+
+      {/* Pickup / 核销 — surfaces the pickup_token (officer reads it to the
+          student) and lets an editor confirm this specific parcel, which is the
+          manual fallback the verify route's multi-match 409 points to. */}
+      {(parcel.pickup_token ||
+        parcel.status === "arrived_us" ||
+        parcel.status === "picked_up") && (
+        <Card>
+          <CardHeader className="p-4">
+            <CardTitle className="text-base">取件 / 核销</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 p-4 pt-0">
+            {parcel.pickup_token && parcel.status !== "picked_up" && (
+              <div>
+                <Label>取件码</Label>
+                <p className="mt-1 font-mono text-xl tracking-[0.3em]">
+                  {parcel.pickup_token}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  学生出示此码（或二维码）核销；可读给学生核对。
+                </p>
+              </div>
+            )}
+            {parcel.status === "picked_up" ? (
+              <p className="text-sm font-medium text-emerald-600">已取件 ✓</p>
+            ) : parcel.status === "arrived_us" && canWrite ? (
+              <Button
+                type="button"
+                onClick={handleConfirmPickup}
+                disabled={confirming}
+              >
+                {confirming ? "处理中…" : "确认取件"}
+              </Button>
+            ) : parcel.status === "arrived_us" && !canWrite ? (
+              <p className="text-xs text-muted-foreground">只读：无法核销</p>
+            ) : null}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Editor */}
       <Card>
@@ -305,21 +361,25 @@ export default function AdminParcelDetailPage() {
               />
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" onClick={handleSaveAll} disabled={saving}>
-              {saving ? "保存中…" : "保存所有修改"}
-            </Button>
-            {next && (
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={handleBumpNext}
-                disabled={saving}
-              >
-                → 推进到「{PARCEL_STATUS_META[next].label}」
+          {canWrite ? (
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" onClick={handleSaveAll} disabled={saving}>
+                {saving ? "保存中…" : "保存所有修改"}
               </Button>
-            )}
-          </div>
+              {next && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleBumpNext}
+                  disabled={saving}
+                >
+                  → 推进到「{PARCEL_STATUS_META[next].label}」
+                </Button>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">只读：无法修改</p>
+          )}
         </CardContent>
       </Card>
 

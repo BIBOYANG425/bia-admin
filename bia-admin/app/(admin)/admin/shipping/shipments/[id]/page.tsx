@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,8 +30,9 @@ import { StatusProgress } from "@/components/shipping/StatusProgress";
 import { BatchProgress } from "@/components/shipping/BatchProgress";
 import { ParcelStatusPill } from "@/components/shipping/ParcelStatusPill";
 import {
+  PARCEL_BRANCH_STATUSES,
   PARCEL_STATUS_META,
-  PARCEL_STATUS_VALUES,
+  PARCEL_STEPS,
   SHIPMENT_STATUS_VALUES,
   SHIPPING_METHOD_META,
   SHIPMENT_STEPS,
@@ -40,6 +42,16 @@ import {
   type Shipment,
   type ShipmentStatus,
 } from "@biboyang425/bia-shared/shipping";
+
+// Forward happy-path bulk-advance targets: every step AFTER 'expected'
+// (received_cn → picked_up). A parcel is never bulk-created/regressed to
+// 'expected', so it isn't an advance target. Branch/terminal states
+// (lost/returned/disputed) are kept separate and require an explicit confirm
+// since they mass-mutate the whole batch off the happy path.
+const FORWARD_ADVANCE_TARGETS: ParcelStatus[] = PARCEL_STEPS.filter(
+  (s) => s !== "expected",
+);
+const BRANCH_TARGET_SET = new Set<ParcelStatus>(PARCEL_BRANCH_STATUSES);
 
 const SHIPMENT_STATUS_LABELS: Record<ShipmentStatus, string> = {
   forming: "组建中",
@@ -71,7 +83,6 @@ export default function AdminShipmentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
 
   // Draft fields
   const [draftName, setDraftName] = useState("");
@@ -156,17 +167,14 @@ export default function AdminShipmentDetailPage() {
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        setToast(err.error ?? "保存失败");
-        setTimeout(() => setToast(null), 1800);
+        toast.error(err.error ?? "保存失败");
         return false;
       }
-      setToast("已保存");
-      setTimeout(() => setToast(null), 1500);
+      toast.success("已保存");
       await load();
       return true;
     } catch {
-      setToast("保存失败");
-      setTimeout(() => setToast(null), 1800);
+      toast.error("保存失败");
       return false;
     } finally {
       setSaving(false);
@@ -201,8 +209,7 @@ export default function AdminShipmentDetailPage() {
     if (draftNotes !== (shipment.notes ?? "")) patch.notes = draftNotes;
 
     if (Object.keys(patch).length === 0) {
-      setToast("没有改动");
-      setTimeout(() => setToast(null), 1200);
+      toast("没有改动");
       return;
     }
     await patchShipment(patch);
@@ -235,22 +242,19 @@ export default function AdminShipmentDetailPage() {
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        setToast(err.error ?? "附加失败");
-        setTimeout(() => setToast(null), 1800);
+        toast.error(err.error ?? "附加失败");
         return;
       }
       const data = (await res.json()) as { updated: number; skipped?: number };
-      setToast(
+      toast.success(
         `已附加 ${data.updated} 个` +
           (data.skipped ? `（跳过 ${data.skipped} 个：非「仓库签收」状态）` : ""),
       );
-      setTimeout(() => setToast(null), 1500);
       setSelected(new Set());
       setShowAttach(false);
       await load();
     } catch {
-      setToast("附加失败");
-      setTimeout(() => setToast(null), 1800);
+      toast.error("附加失败");
     } finally {
       setSaving(false);
     }
@@ -258,6 +262,18 @@ export default function AdminShipmentDetailPage() {
 
   const advanceParcels = async () => {
     if (!bulkStatus || parcels.length === 0) return;
+    // Branch/terminal targets (lost/returned/disputed) mass-mutate the entire
+    // batch off the happy path — make the officer confirm explicitly.
+    if (BRANCH_TARGET_SET.has(bulkStatus)) {
+      const label = PARCEL_STATUS_META[bulkStatus].label;
+      if (
+        !window.confirm(
+          `确认把本批 ${parcels.length} 个包裹全部标记为「${label}」？这是分支/终态，会影响整批，且无法批量回退。`,
+        )
+      ) {
+        return;
+      }
+    }
     setBulkBusy(true);
     try {
       const res = await fetch(
@@ -270,18 +286,15 @@ export default function AdminShipmentDetailPage() {
       );
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        setToast(err.error ?? "批量推进失败");
-        setTimeout(() => setToast(null), 1800);
+        toast.error(err.error ?? "批量推进失败");
         return;
       }
       const data = (await res.json()) as { updated: number; skipped: number };
-      setToast(`已推进 ${data.updated} 个包裹（跳过 ${data.skipped}）`);
-      setTimeout(() => setToast(null), 2200);
+      toast.success(`已推进 ${data.updated} 个包裹（跳过 ${data.skipped}）`);
       setBulkStatus("");
       await load();
     } catch {
-      setToast("批量推进失败");
-      setTimeout(() => setToast(null), 1800);
+      toast.error("批量推进失败");
     } finally {
       setBulkBusy(false);
     }
@@ -302,12 +315,6 @@ export default function AdminShipmentDetailPage() {
 
   return (
     <div className="space-y-6 p-8">
-      {toast && (
-        <div className="fixed right-4 top-20 z-50 rounded-md border bg-foreground px-4 py-2 text-sm text-background shadow-lg">
-          {toast}
-        </div>
-      )}
-
       <div>
         <Link
           href="/admin/shipping/shipments"
@@ -481,8 +488,9 @@ export default function AdminShipmentDetailPage() {
           </CardHeader>
           <CardContent className="space-y-2 p-4 pt-0">
             <p className="text-xs text-muted-foreground">
-              一键把本批 {parcels.length} 个包裹全部推进到所选状态（默认只前进，跳过
-              丢失/退回/已在该状态的包裹）。审计照常记录；每个推进会给学生入队一条状态通知（通知功能开启后下发）。
+              一键把本批 {parcels.length} 个包裹沿正常流程推进到所选状态（只前进，
+              跳过已在该状态/已超前/分支状态的包裹）。分支/终态（丢失/退回/待核实）会影响整批，
+              需二次确认。审计照常记录；每个推进会给学生入队一条状态通知（通知功能开启后下发）。
             </p>
             <div className="flex flex-col gap-2 sm:flex-row">
               <select
@@ -493,11 +501,20 @@ export default function AdminShipmentDetailPage() {
                 className="h-9 min-w-0 flex-1 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
               >
                 <option value="">选目标状态…</option>
-                {PARCEL_STATUS_VALUES.map((s) => (
-                  <option key={s} value={s}>
-                    {PARCEL_STATUS_META[s].label}
-                  </option>
-                ))}
+                <optgroup label="正常推进">
+                  {FORWARD_ADVANCE_TARGETS.map((s) => (
+                    <option key={s} value={s}>
+                      {PARCEL_STATUS_META[s].label}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="分支 / 终态（需确认）">
+                  {PARCEL_BRANCH_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {PARCEL_STATUS_META[s].label}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
               <Button
                 type="button"

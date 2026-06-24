@@ -8,6 +8,7 @@ const {
   slugLookupMock,
   updateMock,
   deleteMock,
+  insertMock,
   sanitizeArticleHtmlMock,
   slugifyMock,
   withCollisionSuffixMock,
@@ -20,6 +21,7 @@ const {
   slugLookupMock: vi.fn(),
   updateMock: vi.fn(),
   deleteMock: vi.fn(),
+  insertMock: vi.fn(),
   sanitizeArticleHtmlMock: vi.fn(),
   slugifyMock: vi.fn(),
   withCollisionSuffixMock: vi.fn(),
@@ -107,6 +109,8 @@ function setupArticleTable() {
     }),
     update: updateMock,
     delete: deleteMock,
+    // article_revisions append on save (best-effort).
+    insert: insertMock,
   });
 }
 
@@ -119,6 +123,8 @@ describe("/api/admin/articles/[id]", () => {
     slugLookupMock.mockReset();
     updateMock.mockReset();
     deleteMock.mockReset();
+    insertMock.mockReset();
+    insertMock.mockResolvedValue({ error: null });
     sanitizeArticleHtmlMock.mockReset();
     slugifyMock.mockReset();
     withCollisionSuffixMock.mockReset();
@@ -233,6 +239,99 @@ describe("/api/admin/articles/[id]", () => {
         action: "article.update",
         entity_type: "article",
         entity_id: "article-1",
+      }),
+    );
+  });
+
+  it("PATCH appends an article_revisions snapshot on save", async () => {
+    maybeSingleMock.mockResolvedValue({
+      data: {
+        id: "article-1",
+        slug: "welcome",
+        status: "draft",
+        title: "Welcome",
+        cover_image_url: null,
+      },
+      error: null,
+    });
+    updateMock.mockReturnValue({
+      eq: () => ({
+        select: () => ({
+          single: () =>
+            Promise.resolve({
+              data: {
+                id: "article-1",
+                title: "Welcome",
+                slug: "welcome",
+                html_clean: "<p>Body</p>",
+                language: "en",
+                status: "draft",
+              },
+              error: null,
+            }),
+        }),
+      }),
+    });
+
+    const res = await PATCH(
+      makePatchRequest({ html: "<p>Body</p>" }),
+      ctxFor("article-1"),
+    );
+
+    expect(res.status).toBe(200);
+    expect(serviceFromMock).toHaveBeenCalledWith("article_revisions");
+    expect(insertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        article_id: "article-1",
+        title: "Welcome",
+        body: "<p>Body</p>",
+        language: "en",
+        status: "draft",
+        edited_by: "u1",
+      }),
+    );
+  });
+
+  it("PATCH accepts and persists scheduled_publish_at", async () => {
+    maybeSingleMock.mockResolvedValue({
+      data: {
+        id: "article-1",
+        slug: "welcome",
+        status: "draft",
+        title: "Welcome",
+        cover_image_url: null,
+      },
+      error: null,
+    });
+    updateMock.mockReturnValue({
+      eq: () => ({
+        select: () => ({
+          single: () =>
+            Promise.resolve({
+              data: {
+                id: "article-1",
+                title: "Welcome",
+                slug: "welcome",
+                html_clean: "<p>Body</p>",
+                language: "en",
+                status: "draft",
+                scheduled_publish_at: "2026-07-01T12:00:00.000Z",
+              },
+              error: null,
+            }),
+        }),
+      }),
+    });
+
+    const res = await PATCH(
+      makePatchRequest({ scheduled_publish_at: "2026-07-01T12:00:00.000Z" }),
+      ctxFor("article-1"),
+    );
+
+    expect(res.status).toBe(200);
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scheduled_publish_at: "2026-07-01T12:00:00.000Z",
       }),
     );
   });

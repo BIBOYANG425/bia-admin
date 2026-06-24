@@ -1,7 +1,8 @@
 // /api/admin/shipping/shipments/[id]/export
 // GET — stream a shipment's parcels as a CSV manifest / 取件清单 (viewer+).
-// Read-only: no mutation, no audit. Uses only existing parcel columns so it
-// needs no migration (amount/paid columns are appended once Phase-4 lands).
+// Read-only: no mutation, no audit. Includes the payment-reconciliation columns
+// (live since migration 20260620000005) so the exported sheet doubles as the
+// collection sheet the roster is for.
 
 import { NextResponse } from "next/server";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
@@ -37,7 +38,7 @@ export async function GET(_request: Request, ctx: RouteContext) {
         admin
           .from("parcels")
           .select(
-            "member_id, description, status, weight_grams, shipping_method, tracking_cn, created_at",
+            "member_id, description, status, weight_grams, shipping_method, tracking_cn, created_at, amount_owed_cents, paid_at, paid_method, paid_by_admin",
           )
           .eq("shipment_id", id)
           .order("member_id", { ascending: true }),
@@ -53,6 +54,12 @@ export async function GET(_request: Request, ctx: RouteContext) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
 
+    const PAID_METHOD_LABEL: Record<string, string> = {
+      cash: "现金",
+      transfer: "转账",
+      other: "其他",
+    };
+
     const header = [
       "Member ID",
       "描述",
@@ -62,6 +69,11 @@ export async function GET(_request: Request, ctx: RouteContext) {
       "运输方式",
       "国内单号",
       "创建时间",
+      "应收(¥)",
+      "已付",
+      "支付方式",
+      "收款人",
+      "付款时间",
     ];
 
     const rows = ((parcels ?? []) as Array<
@@ -74,6 +86,10 @@ export async function GET(_request: Request, ctx: RouteContext) {
         | "shipping_method"
         | "tracking_cn"
         | "created_at"
+        | "amount_owed_cents"
+        | "paid_at"
+        | "paid_method"
+        | "paid_by_admin"
       >
     >).map((p) => [
       p.member_id,
@@ -87,6 +103,13 @@ export async function GET(_request: Request, ctx: RouteContext) {
         : "",
       p.tracking_cn ?? "",
       p.created_at,
+      p.amount_owed_cents != null
+        ? (p.amount_owed_cents / 100).toFixed(2)
+        : "",
+      p.paid_at ? "是" : "",
+      p.paid_method ? (PAID_METHOD_LABEL[p.paid_method] ?? p.paid_method) : "",
+      p.paid_by_admin ?? "",
+      p.paid_at ?? "",
     ]);
 
     // Leading BOM so Excel detects UTF-8 and renders Chinese correctly.
