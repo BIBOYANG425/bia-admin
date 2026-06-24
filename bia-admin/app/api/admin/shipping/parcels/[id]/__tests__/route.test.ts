@@ -76,6 +76,14 @@ describe("PATCH /api/admin/shipping/parcels/[id]", () => {
   });
 
   it("calls admin_patch_parcel with the acting admin's id (audit chain) and returns the row", async () => {
+    // transition pre-fetch: current expected → received_cn is forward (ok)
+    fromMock.mockImplementation(() => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: () => Promise.resolve({ data: { status: "expected" } }),
+        }),
+      }),
+    }));
     rpcMock.mockResolvedValue({
       data: { id: "p1", status: "received_cn", weight_grams: 1500 },
       error: null,
@@ -93,6 +101,20 @@ describe("PATCH /api/admin/shipping/parcels/[id]", () => {
       p_actor_user_id: "admin-9",
       p_patch: { status: "received_cn", weight_grams: 1500 },
     });
+  });
+
+  it("409s on an invalid parcel transition (out of picked_up) without calling the RPC", async () => {
+    fromMock.mockImplementation(() => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: () => Promise.resolve({ data: { status: "picked_up" } }),
+        }),
+      }),
+    }));
+    const res = await PATCH(patchReq({ status: "in_transit" }), ctxFor("p1"));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("invalid_transition");
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 
   it("404s when the RPC reports no row updated", async () => {
