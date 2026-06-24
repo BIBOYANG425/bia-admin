@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireRole, RoleError } from "@/lib/auth/require-role";
+import { RoleProvider } from "@/lib/auth/role-context";
 import SidebarBody from "@/components/SidebarBody";
 import TopBar from "@/components/TopBar";
 
@@ -37,7 +38,7 @@ export default async function AdminShell({
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar role={ctx.role} email={ctx.user.email} />
         <main id="main-content" className="min-w-0 flex-1">
-          {children}
+          <RoleProvider role={ctx.role}>{children}</RoleProvider>
         </main>
       </div>
     </div>

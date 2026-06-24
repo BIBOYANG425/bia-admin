@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/table";
 import { ParcelStatusPill } from "@/components/shipping/ParcelStatusPill";
 import { requireRole } from "@/lib/auth/require-role";
+import { sanitizeSearchTerm } from "@/lib/shipping/search-filter";
 
 export const dynamic = "force-dynamic";
 
@@ -54,9 +55,12 @@ export default async function AdminParcelsPage({ searchParams }: PageProps) {
     .order("created_at", { ascending: false });
 
   if (status) query = query.eq("status", status);
-  if (search) {
+  // Sanitize before interpolating into the PostgREST .or() grammar (matches the
+  // API route; raw input could otherwise inject filter conditions).
+  const q = sanitizeSearchTerm(search);
+  if (q) {
     query = query.or(
-      `description.ilike.%${search}%,tracking_cn.ilike.%${search}%,member_id.ilike.%${search}%`,
+      `description.ilike.%${q}%,tracking_cn.ilike.%${q}%,member_id.ilike.%${q}%`,
     );
   }
 

@@ -21,11 +21,23 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PaidPill } from "@/components/shipping/PaidPill";
+import { useCanWrite } from "@/lib/auth/role-context";
 import type { Parcel, Shipment } from "@biboyang425/bia-shared/shipping";
 
 function yuan(cents: number | null | undefined): string {
   return cents == null ? "0.00" : (cents / 100).toFixed(2);
 }
+
+const PAID_METHODS = [
+  { value: "cash", label: "现金" },
+  { value: "transfer", label: "转账" },
+  { value: "other", label: "其他" },
+] as const;
+const METHOD_LABEL: Record<string, string> = {
+  cash: "现金",
+  transfer: "转账",
+  other: "其他",
+};
 
 export default function ShipmentRosterPage() {
   const { id } = useParams<{ id: string }>();
@@ -140,7 +152,7 @@ export default function ShipmentRosterPage() {
                 <TableHead className="px-4">描述</TableHead>
                 <TableHead className="w-20 px-4">重量</TableHead>
                 <TableHead className="w-28 px-4">应收 (¥)</TableHead>
-                <TableHead className="w-48 px-4">收款</TableHead>
+                <TableHead className="w-80 px-4">收款</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -169,11 +181,14 @@ function RosterRow({
   saving: boolean;
   onPatch: (id: string, patch: Record<string, unknown>) => void;
 }) {
+  const canWrite = useCanWrite();
   const [amount, setAmount] = useState(
     parcel.amount_owed_cents != null
       ? (parcel.amount_owed_cents / 100).toFixed(2)
       : "",
   );
+  const [method, setMethod] = useState<string>("cash");
+  const [note, setNote] = useState("");
   const paid = !!parcel.paid_at;
   const weightKg = parcel.weight_grams
     ? `${(parcel.weight_grams / 1000).toFixed(1)} kg`
@@ -216,22 +231,73 @@ function RosterRow({
           }}
           inputMode="decimal"
           placeholder="—"
+          disabled={!canWrite}
           className="h-8 w-24"
         />
       </TableCell>
       <TableCell className="px-4 py-2">
-        <div className="flex items-center gap-2">
-          <PaidPill paid={paid} />
-          <Button
-            type="button"
-            variant={paid ? "outline" : "secondary"}
-            size="sm"
-            disabled={saving}
-            onClick={() => onPatch(parcel.id, { paid: !paid })}
-          >
-            {paid ? "撤销" : "标记已收"}
-          </Button>
-        </div>
+        {paid ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <PaidPill paid />
+            {(parcel.paid_method || parcel.paid_note) && (
+              <span className="text-xs text-muted-foreground">
+                {parcel.paid_method
+                  ? METHOD_LABEL[parcel.paid_method] ?? parcel.paid_method
+                  : ""}
+                {parcel.paid_note ? ` · ${parcel.paid_note}` : ""}
+              </span>
+            )}
+            {canWrite && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={saving}
+                onClick={() => onPatch(parcel.id, { paid: false })}
+              >
+                撤销
+              </Button>
+            )}
+          </div>
+        ) : canWrite ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <select
+              value={method}
+              onChange={(e) => setMethod(e.target.value)}
+              className="h-8 rounded-md border border-input bg-transparent px-2 text-xs shadow-sm"
+              aria-label="支付方式"
+            >
+              {PAID_METHODS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+            <Input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="备注"
+              className="h-8 w-24"
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={saving}
+              onClick={() =>
+                onPatch(parcel.id, {
+                  paid: true,
+                  paid_method: method,
+                  paid_note: note.trim() || null,
+                })
+              }
+            >
+              标记已收
+            </Button>
+          </div>
+        ) : (
+          <PaidPill paid={false} />
+        )}
       </TableCell>
     </TableRow>
   );
