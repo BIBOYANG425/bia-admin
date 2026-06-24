@@ -36,7 +36,8 @@ interface AuditRow {
   entity_type: string;
   entity_id: string | null;
   payload: Record<string, unknown> | null;
-  created_at: string;
+  // Prod column is `ts` (timestamptz default now()), not `created_at`.
+  ts: string;
 }
 
 const ENTITY_SET = new Set<string>(AUDIT_ENTITY_TYPES);
@@ -76,14 +77,14 @@ export default async function AdminAuditPage({ searchParams }: PageProps) {
   let query = admin
     .from("admin_audit_log")
     .select("*", { count: "exact" })
-    .order("created_at", { ascending: false });
+    .order("ts", { ascending: false });
 
   if (entityType) query = query.eq("entity_type", entityType);
   if (action) query = query.ilike("action", `%${action}%`);
   if (adminEmail) query = query.ilike("admin_email", `%${adminEmail}%`);
   // Date inputs are YYYY-MM-DD; make `to` inclusive of the whole day.
-  if (from) query = query.gte("created_at", from);
-  if (to) query = query.lte("created_at", `${to}T23:59:59.999Z`);
+  if (from) query = query.gte("ts", from);
+  if (to) query = query.lte("ts", `${to}T23:59:59.999Z`);
 
   const { data, count, error } = await query.range(
     page * PAGE_SIZE,
@@ -207,7 +208,7 @@ export default async function AdminAuditPage({ searchParams }: PageProps) {
               rows.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                    {formatDateTime(r.created_at)}
+                    {formatDateTime(r.ts)}
                   </TableCell>
                   <TableCell className="max-w-[200px] truncate px-4 py-3 text-xs">
                     {r.admin_email}
