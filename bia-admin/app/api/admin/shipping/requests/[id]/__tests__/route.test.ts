@@ -84,6 +84,12 @@ describe("PATCH /api/admin/shipping/requests/[id]", () => {
   it("updates status + admin_note and returns the row", async () => {
     let captured: Record<string, unknown> | null = null;
     fromMock.mockImplementation(() => ({
+      // transition pre-fetch: current pending → scheduled is forward (ok)
+      select: () => ({
+        eq: () => ({
+          maybeSingle: () => Promise.resolve({ data: { status: "pending" } }),
+        }),
+      }),
       update: (p: Record<string, unknown>) => {
         captured = p;
         return { eq: () => ({ select: () => ({ single: updateSingleMock }) }) };
