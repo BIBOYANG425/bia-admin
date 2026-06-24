@@ -62,7 +62,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { href: "/admin/comments", label: "评论管理", icon: MessageSquare, group: "content", enabled: true },
   { href: "/admin/events",      label: "活动",     icon: Calendar,       group: "content",   enabled: true },
   { href: "/admin/marketplace", label: "活动投稿", icon: ClipboardCheck, group: "content",   enabled: true },
-  { href: "/admin/sponsors", label: "Sponsors", icon: Star,      group: "content",   enabled: false, comingIn: "Phase 2" },
+  { href: "/admin/sponsors", label: "Sponsors", icon: Star,      group: "content",   enabled: true },
   { href: "/admin/squad",    label: "Squad",    icon: Users2,    group: "community", enabled: true },
 
   // Phase 3 — 集运 (live: parity-checked + prod smoke passed 2026-06-05, slice 9)
