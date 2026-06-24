@@ -8,6 +8,7 @@ import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { withRole } from "@/lib/auth/require-role";
 import { writeAudit } from "@/lib/admin/audit-log";
+import { removeSponsorLogoByUrl } from "@/lib/admin/sponsor-logos";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -57,6 +58,18 @@ export async function PATCH(request: Request, ctx: RouteContext) {
     }
 
     const admin = createBiaServiceRoleClient();
+
+    // Capture the previous logo so we can clean it up if it's being replaced.
+    let previousLogo: string | null = null;
+    if (b.logo_url !== undefined) {
+      const { data: existing } = await admin
+        .from("sponsors")
+        .select("logo_url")
+        .eq("id", id)
+        .maybeSingle();
+      previousLogo = (existing?.logo_url as string | null) ?? null;
+    }
+
     const { data, error } = await admin
       .from("sponsors")
       .update(update)
@@ -72,6 +85,12 @@ export async function PATCH(request: Request, ctx: RouteContext) {
     }
     if (!data) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
+
+    // Remove the orphaned old logo from the public bucket if it changed.
+    const newLogo = (update.logo_url as string | null | undefined) ?? null;
+    if (b.logo_url !== undefined && previousLogo && previousLogo !== newLogo) {
+      await removeSponsorLogoByUrl(previousLogo);
     }
 
     await writeAudit({
@@ -90,6 +109,14 @@ export async function DELETE(_request: Request, ctx: RouteContext) {
   return withRole("super_admin", async (auth) => {
     const { id } = await ctx.params;
     const admin = createBiaServiceRoleClient();
+
+    // Read the logo URL before deleting so we can clean up the storage object.
+    const { data: existing } = await admin
+      .from("sponsors")
+      .select("logo_url")
+      .eq("id", id)
+      .maybeSingle();
+
     const { error } = await admin.from("sponsors").delete().eq("id", id);
 
     if (error) {
@@ -98,6 +125,8 @@ export async function DELETE(_request: Request, ctx: RouteContext) {
         { status: 500 },
       );
     }
+
+    await removeSponsorLogoByUrl((existing?.logo_url as string | null) ?? null);
 
     await writeAudit({
       admin_email: auth.user.email,

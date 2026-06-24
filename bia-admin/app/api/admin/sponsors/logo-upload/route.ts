@@ -9,12 +9,16 @@ import { withRole } from "@/lib/auth/require-role";
 import { writeAudit } from "@/lib/admin/audit-log";
 
 const MAX_BYTES = 2 * 1024 * 1024;
-const ALLOWED = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-  "image/gif",
-]);
+// Derive the stored extension from the validated MIME type, not file.name —
+// `'logo'.split('.').pop()` returns the whole name (the `|| "png"` fallback is
+// unreachable for extension-less files).
+const EXT_BY_TYPE: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+  "image/gif": "gif",
+};
+const ALLOWED = new Set(Object.keys(EXT_BY_TYPE));
 
 export async function POST(request: Request) {
   return withRole("editor", async (auth) => {
@@ -34,7 +38,7 @@ export async function POST(request: Request) {
       /[^a-zA-Z0-9_-]/g,
       "",
     );
-    const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+    const ext = EXT_BY_TYPE[file.type] ?? "png";
     const path = `logo-${id || "sponsor"}-${Date.now()}.${ext}`;
 
     const admin = createBiaServiceRoleClient();

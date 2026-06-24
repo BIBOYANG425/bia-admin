@@ -47,6 +47,8 @@ export async function POST(request: Request, ctx: RouteContext) {
         rejected_at: new Date().toISOString(),
         rejected_by: auth.adminUser.id,
         rejection_reason: reason ?? null,
+        // Clear any pending schedule so a rejected draft isn't auto-published.
+        scheduled_publish_at: null,
       })
       .eq("id", id)
       .select()
