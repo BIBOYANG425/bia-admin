@@ -48,6 +48,14 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Compile the ./phone entry to runnable CJS dist/ before publishing. files[]
+      # includes dist, so npm publish ships it; without this step dist/ is absent
+      # and Node consumers (george) would get an unloadable .ts entry.
+      - name: Build
+        if: steps.check.outputs.exists == 'false'
+        working-directory: packages/bia-shared
+        run: pnpm run build
+
       - name: Publish
         if: steps.check.outputs.exists == 'false'
         working-directory: packages/bia-shared
