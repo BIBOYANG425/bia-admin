@@ -63,10 +63,15 @@ export const SHIPMENT_TRANSITION: TransitionPolicy = {
   branch: new Set(),
 };
 
+// declined / cancelled are TERMINAL (not branch): a closed pack request cannot
+// be reopened — recreate instead. Reopening (cancelled/declined → pending) would
+// bypass the one-open-request INSERT trigger and let a parcel sit in two open
+// requests (Codex review #4). You can still enter declined/cancelled from a live
+// state; you just can't leave them.
 export const PACK_REQUEST_TRANSITION: TransitionPolicy = {
   order: ["pending", "contacted", "approved", "packed", "shipped"],
-  terminal: new Set(["shipped"]),
-  branch: new Set(["declined", "cancelled"]),
+  terminal: new Set(["shipped", "declined", "cancelled"]),
+  branch: new Set(),
 };
 
 export const SHIPMENT_REQUEST_TRANSITION: TransitionPolicy = {

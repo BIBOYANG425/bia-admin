@@ -89,6 +89,25 @@ export async function POST(request: Request, ctx: RouteContext) {
       },
     );
     if (rpcErr) {
+      // The RPC re-checks request/shipment status under a row lock (race
+      // backstop for the route prechecks above) and raises a recognizable token
+      // — map those to clean 4xx instead of a generic 500.
+      const msg = rpcErr.message ?? "";
+      if (msg.includes("pack_request_not_found")) {
+        return NextResponse.json({ error: "not_found" }, { status: 404 });
+      }
+      if (msg.includes("pack_request_not_attachable")) {
+        return NextResponse.json(
+          { error: "request_not_attachable" },
+          { status: 409 },
+        );
+      }
+      if (msg.includes("shipment_not_attachable")) {
+        return NextResponse.json(
+          { error: "shipment_not_attachable" },
+          { status: 409 },
+        );
+      }
       return NextResponse.json(
         { error: "attach_failed", details: rpcErr.message },
         { status: 500 },

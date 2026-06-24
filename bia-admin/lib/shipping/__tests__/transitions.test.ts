@@ -40,9 +40,12 @@ describe("checkTransition — branch / exception states", () => {
   it("parcel: cannot leave picked_up (terminal)", () => {
     expect(checkTransition(PARCEL_TRANSITION, "picked_up", "arrived_us").ok).toBe(false);
   });
-  it("pack-request: declined/cancelled are reachable + reversible", () => {
+  it("pack-request: declined/cancelled are reachable but terminal (no reopen)", () => {
     expect(checkTransition(PACK_REQUEST_TRANSITION, "pending", "declined").ok).toBe(true);
-    expect(checkTransition(PACK_REQUEST_TRANSITION, "cancelled", "pending").ok).toBe(true);
+    expect(checkTransition(PACK_REQUEST_TRANSITION, "contacted", "cancelled").ok).toBe(true);
+    // reopening a closed request is blocked (Codex #4) — recreate instead.
+    expect(checkTransition(PACK_REQUEST_TRANSITION, "cancelled", "pending").ok).toBe(false);
+    expect(checkTransition(PACK_REQUEST_TRANSITION, "declined", "contacted").ok).toBe(false);
   });
   it("pack-request: cannot leave shipped (terminal)", () => {
     expect(checkTransition(PACK_REQUEST_TRANSITION, "shipped", "packed").ok).toBe(false);

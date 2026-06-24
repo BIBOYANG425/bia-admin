@@ -170,11 +170,37 @@ describe("POST /api/admin/shipping/pack-requests/[id]/attach", () => {
     expect(rpcMock).not.toHaveBeenCalled();
   });
 
-  it("surfaces an RPC failure as 500", async () => {
+  it("surfaces an unknown RPC failure as 500", async () => {
     setup();
     rpcMock.mockResolvedValue({ data: null, error: { message: "rpc boom" } });
     const res = await POST(req({ shipment_id: "s1" }), ctxFor("pr1"));
     expect(res.status).toBe(500);
     expect((await res.json()).error).toBe("attach_failed");
+  });
+
+  it("maps the RPC race-guard violations to 409/404 (not 500)", async () => {
+    setup();
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: { message: "pack_request_not_attachable: approved" },
+    });
+    let res = await POST(req({ shipment_id: "s1" }), ctxFor("pr1"));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("request_not_attachable");
+
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: { message: "shipment_not_attachable: archived" },
+    });
+    res = await POST(req({ shipment_id: "s1" }), ctxFor("pr1"));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("shipment_not_attachable");
+
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: { message: "pack_request_not_found" },
+    });
+    res = await POST(req({ shipment_id: "s1" }), ctxFor("pr1"));
+    expect(res.status).toBe(404);
   });
 });
