@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { PARCEL_STATUS_VALUES } from "@biboyang425/bia-shared/shipping";
 import { withRole } from "@/lib/auth/require-role";
+import { sanitizeSearchTerm } from "@/lib/shipping/search-filter";
 
 const STATUS_SET = new Set<string>(PARCEL_STATUS_VALUES);
 
@@ -17,7 +18,7 @@ export async function GET(request: Request) {
     const status = searchParams.get("status");
     const shipmentId = searchParams.get("shipment_id");
     const memberId = searchParams.get("member_id");
-    const search = (searchParams.get("search") ?? "").trim();
+    const search = sanitizeSearchTerm(searchParams.get("search"));
     const limit = Math.min(Number(searchParams.get("limit") ?? 50), 200);
     const offset = Math.max(Number(searchParams.get("offset") ?? 0), 0);
 
