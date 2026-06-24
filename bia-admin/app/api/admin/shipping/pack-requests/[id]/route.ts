@@ -11,6 +11,10 @@ import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/ser
 import { PACK_REQUEST_STATUS_VALUES } from "@biboyang425/bia-shared/shipping";
 import { withRole } from "@/lib/auth/require-role";
 import { logAdminAction } from "@/lib/audit/log";
+import {
+  checkTransition,
+  PACK_REQUEST_TRANSITION,
+} from "@/lib/shipping/transitions";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -54,6 +58,35 @@ export async function PATCH(request: Request, ctx: RouteContext) {
     }
 
     const admin = createBiaServiceRoleClient();
+
+    // Block status regressions / leaving a terminal state (transition policy).
+    if (typeof patch.status === "string") {
+      const { data: cur } = await admin
+        .from("pack_requests")
+        .select("status")
+        .eq("id", id)
+        .maybeSingle();
+      if (!cur) {
+        return NextResponse.json({ error: "not_found" }, { status: 404 });
+      }
+      const t = checkTransition(
+        PACK_REQUEST_TRANSITION,
+        cur.status as string,
+        patch.status,
+      );
+      if (!t.ok) {
+        return NextResponse.json(
+          {
+            error: "invalid_transition",
+            detail: t.reason,
+            from: cur.status,
+            to: patch.status,
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const { data, error } = await admin
       .from("pack_requests")
       .update(patch)

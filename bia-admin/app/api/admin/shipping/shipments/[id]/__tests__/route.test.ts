@@ -113,6 +113,12 @@ describe("/api/admin/shipping/shipments/[id]", () => {
   it("PATCH normalizes empty strings to null and updates", async () => {
     let captured: Record<string, unknown> | null = null;
     fromMock.mockImplementation(() => ({
+      // transition pre-fetch: current status forming → departed_cn is forward (ok)
+      select: () => ({
+        eq: () => ({
+          maybeSingle: () => Promise.resolve({ data: { status: "forming" } }),
+        }),
+      }),
       update: (p: Record<string, unknown>) => {
         captured = p;
         return { eq: () => ({ select: () => ({ single: updateSingleMock }) }) };
@@ -133,6 +139,22 @@ describe("/api/admin/shipping/shipments/[id]", () => {
       carrier: null, // "" -> null
       international_tracking: "SF123",
     });
+  });
+
+  it("409s on an invalid status transition (leaving a terminal state)", async () => {
+    fromMock.mockImplementation(() => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: () => Promise.resolve({ data: { status: "archived" } }),
+        }),
+      }),
+      update: () => ({
+        eq: () => ({ select: () => ({ single: updateSingleMock }) }),
+      }),
+    }));
+    const res = await PATCH(patchReq({ status: "forming" }), ctxFor("s1"));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("invalid_transition");
   });
 
   it("PATCH with no fields returns no_fields", async () => {

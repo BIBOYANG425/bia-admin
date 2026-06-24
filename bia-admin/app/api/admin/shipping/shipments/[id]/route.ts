@@ -10,6 +10,10 @@ import { SHIPMENT_STATUS_VALUES } from "@biboyang425/bia-shared/shipping";
 import { withRole } from "@/lib/auth/require-role";
 import { logAdminAction } from "@/lib/audit/log";
 import {
+  checkTransition,
+  SHIPMENT_TRANSITION,
+} from "@/lib/shipping/transitions";
+import {
   enqueueShippingNotifications,
   type ShippingNotificationRow,
 } from "@/lib/shipping/notify";
@@ -91,6 +95,35 @@ export async function PATCH(request: Request, ctx: RouteContext) {
     }
 
     const admin = createBiaServiceRoleClient();
+
+    // Block status regressions / leaving a terminal state (transition policy).
+    if (typeof patch.status === "string") {
+      const { data: cur } = await admin
+        .from("shipments")
+        .select("status")
+        .eq("id", id)
+        .maybeSingle();
+      if (!cur) {
+        return NextResponse.json({ error: "not_found" }, { status: 404 });
+      }
+      const t = checkTransition(
+        SHIPMENT_TRANSITION,
+        cur.status as string,
+        patch.status,
+      );
+      if (!t.ok) {
+        return NextResponse.json(
+          {
+            error: "invalid_transition",
+            detail: t.reason,
+            from: cur.status,
+            to: patch.status,
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const { data, error } = await admin
       .from("shipments")
       .update(patch)
