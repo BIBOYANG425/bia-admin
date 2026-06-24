@@ -17,6 +17,7 @@ import {
   Users2,
   type LucideIcon,
 } from "lucide-react";
+import type { Role } from "@biboyang425/bia-shared";
 
 export type AdminGroup =
   | "content"
@@ -33,6 +34,12 @@ export interface AdminSection {
   /** Disabled sections render greyed out with a tooltip "Coming in Phase X". */
   enabled: boolean;
   comingIn?: string;
+  /**
+   * Minimum role required to even SEE this section in the nav. Defaults to
+   * "viewer" (everyone). Set to "editor" for write-only pages (no read value
+   * for a viewer) so viewers aren't shown a flow they can't complete.
+   */
+  minRole?: Role;
 }
 
 export const ADMIN_GROUPS: Record<AdminGroup, string> = {
@@ -58,13 +65,13 @@ export const ADMIN_SECTIONS: AdminSection[] = [
 
   // Phase 3 — 集运 (live: parity-checked + prod smoke passed 2026-06-05, slice 9)
   { href: "/admin/shipping/parcels",        label: "集运·包裹", icon: Package,      group: "operations", enabled: true },
-  { href: "/admin/shipping/parcels/intake", label: "集运·入库", icon: PackagePlus,  group: "operations", enabled: true },
+  { href: "/admin/shipping/parcels/intake", label: "集运·入库", icon: PackagePlus,  group: "operations", enabled: true, minRole: "editor" },
   { href: "/admin/shipping/shipments",      label: "集运·批次", icon: Ship,         group: "operations", enabled: true },
   { href: "/admin/shipping/pack-requests", label: "集运·打包", icon: Boxes,         group: "operations", enabled: true },
   { href: "/admin/shipping/requests",      label: "集运·发货", icon: ClipboardList, group: "operations", enabled: true },
   { href: "/admin/shipping/routes",        label: "集运·专线", icon: Route,         group: "operations", enabled: true },
   { href: "/admin/shipping/contacts",      label: "集运·联系", icon: Contact,       group: "operations", enabled: true },
-  { href: "/admin/shipping/pickup",        label: "集运·核销", icon: ScanLine,      group: "operations", enabled: true },
+  { href: "/admin/shipping/pickup",        label: "集运·核销", icon: ScanLine,      group: "operations", enabled: true, minRole: "editor" },
 
   // System — audit log viewer over admin_audit_log (WS0).
   { href: "/admin/audit", label: "审计日志", icon: ScrollText, group: "system", enabled: true },

@@ -31,10 +31,17 @@ export default async function AdminShell({
         >
           BIA Admin
         </Link>
-        <SidebarNav />
+        <SidebarNav role={ctx.role} />
         <div className="mt-auto pt-4 border-t border-zinc-800 px-2 text-xs">
           <p className="text-zinc-400 truncate">{ctx.user.email}</p>
-          <p className="text-zinc-500 capitalize">{ctx.role.replace("_", " ")}</p>
+          <p className="flex items-center gap-1.5 text-zinc-500">
+            <span className="capitalize">{ctx.role.replace("_", " ")}</span>
+            {ctx.role === "viewer" ? (
+              <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-zinc-400">
+                只读
+              </span>
+            ) : null}
+          </p>
           <form action="/auth/signout" method="POST" className="mt-2">
             <button
               type="submit"
