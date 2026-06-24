@@ -23,6 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { requireRole } from "@/lib/auth/require-role";
+import { sanitizeSearchTerm } from "@/lib/shipping/search-filter";
 
 export const dynamic = "force-dynamic";
 
@@ -132,8 +133,11 @@ export default async function BlogListPage({ searchParams }: PageProps) {
   if (statusFilter) {
     query = query.eq("status", statusFilter);
   }
-  if (search) {
-    query = query.or(`title.ilike.%${search}%,slug.ilike.%${search}%`);
+  // Sanitize before interpolating into the PostgREST .or() grammar (matches the
+  // other list pages; raw input could otherwise inject filter conditions).
+  const q = sanitizeSearchTerm(search);
+  if (q) {
+    query = query.or(`title.ilike.%${q}%,slug.ilike.%${q}%`);
   }
 
   const { data, count, error } = await query.range(

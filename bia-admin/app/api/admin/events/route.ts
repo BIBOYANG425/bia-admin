@@ -44,10 +44,13 @@ export async function GET() {
     const ids = (events ?? []).map((e) => e.id as string);
     const counts = new Map<string, number>();
     if (ids.length > 0) {
+      // Registered = RSVP'd OR checked in (check-in overwrites source
+      // rsvp→checkin, so counting only 'rsvp' undercounts). Matches the
+      // events list page.
       const { data: att } = await admin
         .from("event_attendance")
         .select("event_id")
-        .eq("source", "rsvp")
+        .in("source", ["rsvp", "checkin"])
         .in("event_id", ids);
       for (const a of att ?? []) {
         const k = a.event_id as string;
