@@ -34,15 +34,23 @@ export async function POST(_request: Request, ctx: RouteContext) {
       return NextResponse.json({ error: "not_cancelled" }, { status: 409 });
     }
 
-    const { error: updateError } = await admin
+    const { data: updated, error: updateError } = await admin
       .from("squad_posts")
       .update({ cancelled_at: null })
-      .eq("id", id);
+      .eq("id", id)
+      // Guard against a concurrent reopen: only clear a cancelled post.
+      .not("cancelled_at", "is", null)
+      .select("id");
     if (updateError) {
       return NextResponse.json(
         { error: "update_failed", details: updateError.message },
         { status: 500 },
       );
+    }
+    // A 0-row UPDATE returns no error — a concurrent reopen already won. Don't
+    // write a phantom audit entry for a state change that didn't happen.
+    if (!updated || updated.length === 0) {
+      return NextResponse.json({ error: "not_cancelled" }, { status: 409 });
     }
 
     await writeAudit({

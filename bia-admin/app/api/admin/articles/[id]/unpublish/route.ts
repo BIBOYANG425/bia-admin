@@ -39,6 +39,8 @@ export async function POST(_request: Request, ctx: RouteContext) {
         status: "unpublished",
         unpublished_at: new Date().toISOString(),
         unpublished_by: auth.adminUser.id,
+        // Clear any pending schedule so the cron can't re-publish this takedown.
+        scheduled_publish_at: null,
       })
       .eq("id", id)
       .select()

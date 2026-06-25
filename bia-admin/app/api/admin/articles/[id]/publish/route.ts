@@ -68,6 +68,9 @@ export async function POST(_request: Request, ctx: RouteContext) {
         published_by: auth.adminUser.id,
         unpublished_at: null,
         unpublished_by: null,
+        // Clear any pending schedule — a manual transition wins, and a stale
+        // scheduled_publish_at would let the cron re-publish after a takedown.
+        scheduled_publish_at: null,
       })
       .eq("id", id)
       .select()

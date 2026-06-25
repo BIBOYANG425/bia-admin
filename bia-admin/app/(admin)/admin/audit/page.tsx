@@ -170,13 +170,13 @@ export default async function AdminAuditPage({ searchParams }: PageProps) {
         </div>
         <div className="flex flex-col gap-1">
           <label htmlFor="from" className="text-xs text-muted-foreground">
-            起始日期
+            起始日期 (UTC)
           </label>
           <Input id="from" name="from" type="date" defaultValue={from} />
         </div>
         <div className="flex flex-col gap-1">
           <label htmlFor="to" className="text-xs text-muted-foreground">
-            结束日期
+            结束日期 (UTC)
           </label>
           <Input id="to" name="to" type="date" defaultValue={to} />
         </div>
