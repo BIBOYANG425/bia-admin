@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useRole } from "@/lib/auth/role-context";
 import { roleAtLeast } from "@biboyang425/bia-shared";
+import type { ArticleComment } from "@biboyang425/bia-shared/comments";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -15,15 +16,20 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-export interface CommentRow {
-  id: string;
-  article_id: string;
-  author_name: string | null;
-  author_member_id: string | null;
-  body: string;
-  status: "visible" | "hidden" | "deleted";
-  created_at: string;
-  moderated_by: string | null;
+// Bound to the shared row type so the moderation table can't drift from the DB
+// shape. Pick only the columns the page query selects (no moderated_at).
+export interface CommentRow
+  extends Pick<
+    ArticleComment,
+    | "id"
+    | "article_id"
+    | "author_name"
+    | "author_member_id"
+    | "body"
+    | "status"
+    | "created_at"
+    | "moderated_by"
+  > {
   article: { title: string; slug: string } | null;
 }
 
