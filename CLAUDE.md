@@ -118,6 +118,7 @@ Changes here that require coordinated changes:
 - **Migration affecting a table george reads or writes** (students, messages, reminders, events) → land migration here. Then update DB helpers in george.
 - **bia-shared major version bump** → update `@biboyang425/bia-shared` dep in bia-roommate and george.
 - **New role added to `Role` enum** → ship in bia-shared first, bump version, update both consumers, then make role meaningful in `admin_users`.
+- **Pickup QR** → the admin pickup desk (`/admin/shipping/pickup`) has a camera scanner that decodes the **bare 8-char `pickup_token`** and feeds the existing verify endpoint. bia-roommate must render each parcel's `pickup_token` as a QR (raw token text — no URL/JSON wrapper) on the student pickup view. The admin decoder is lenient (also tolerates `?t=<token>` / last-path-segment URLs or `{token}` JSON), but raw token is the agreed contract.
 
 ## BIA strategic context
 
