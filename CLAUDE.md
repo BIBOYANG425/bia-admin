@@ -100,6 +100,7 @@ Changes here that require coordinated changes:
 - **Migration affecting a table george reads or writes** (students, messages, reminders, events) → land migration here. Then update DB helpers in george.
 - **bia-shared major version bump** → update `@biboyang425/bia-shared` dep in bia-roommate and george.
 - **New role added to `Role` enum** → ship in bia-shared first, bump version, update both consumers, then make role meaningful in `admin_users`.
+- **Public blog comments** → `article_comments` is live and admin moderation (`/admin/comments`) ships here. bia-roommate builds the public form/list: anon `INSERT` with `status` forced `'visible'` (DB default — don't send it), `body` 1–2000, published-article enforced by RLS; anon `SELECT` returns only `status='visible'`. Type the public surface as `PublicArticleComment` from `@biboyang425/bia-shared/comments` (≥0.6.1) — never hand it the full `ArticleComment` (carries moderation fields). Rate-limit the POST per-IP; optional Turnstile.
 
 ## BIA strategic context
 
