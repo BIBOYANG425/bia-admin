@@ -2,6 +2,24 @@
 
 @AGENTS.md
 
+## About BIA
+
+BIA is a student-led community starting from USC, exploring how humanity, technology, and art can reshape the way young people connect, experience, and belong.
+
+We began with a simple observation: when someone enters a new school, a new city, or a new culture, what they lack is often not information, but a trusted way to make sense of it. There are endless posts, group chats, platforms, and recommendations. Yet the harder questions remain: What is worth going to? Who should I meet? Where do I start? How do I turn a place that feels unfamiliar into a life that feels like my own? **BIA exists to become that entry point.**
+
+Rooted in the lived experience of international and Chinese-background students at USC, BIA is not just a social club, a tech club, or a traditional student organization. We are an experience-driven community that brings together lifestyle, creativity, technology, career exploration, and human connection. Community is not just about gathering people — it is about designing the conditions for meaningful encounters to happen.
+
+Our work sits at the intersection of people, technology, and art:
+
+- **Humanity is why we exist.** We care about belonging, identity, friendship, ambition, and the emotional experience of entering a new environment.
+- **Technology is how we imagine new forms of connection.** Not a cold tool, but a way to make discovery, recommendation, and community more personal, intuitive, and alive.
+- **Art is how we shape experience.** From visual identity to event atmosphere, from storytelling to spatial design, the way something feels is part of what makes it matter.
+
+BIA starts at USC, but the questions are larger than one campus: How do young people find their place in a new environment? How do communities form in an age of fragmented attention? How can technology make human connection warmer rather than colder? How can art turn ordinary gatherings into experiences people remember?
+
+We are not simply a club that hosts events — we are a living community platform that helps young people discover better experiences, meet the right people, and find more meaningful paths for growth. From USC to LA, from campus life to city culture, from one gathering to a longer sense of belonging, BIA is here to explore what the next generation of community can become.
+
 ## What this repo is
 
 The admin dashboard at https://admin.uscbia.com plus the workspace home for `@biboyang425/bia-shared`. BIA officers (super_admin / editor / viewer roles) use this to manage:
@@ -101,10 +119,11 @@ Changes here that require coordinated changes:
 - **bia-shared major version bump** → update `@biboyang425/bia-shared` dep in bia-roommate and george.
 - **New role added to `Role` enum** → ship in bia-shared first, bump version, update both consumers, then make role meaningful in `admin_users`.
 - **Public blog comments** → `article_comments` is live and admin moderation (`/admin/comments`) ships here. bia-roommate builds the public form/list: anon `INSERT` with `status` forced `'visible'` (DB default — don't send it), `body` 1–2000, published-article enforced by RLS; anon `SELECT` returns only `status='visible'`. Type the public surface as `PublicArticleComment` from `@biboyang425/bia-shared/comments` (≥0.6.1) — never hand it the full `ArticleComment` (carries moderation fields). Rate-limit the POST per-IP; optional Turnstile.
+- **Pickup QR** → the admin pickup desk (`/admin/shipping/pickup`) has a camera scanner that decodes the **bare 8-char `pickup_token`** and feeds the existing verify endpoint. bia-roommate must render each parcel's `pickup_token` as a QR (raw token text — no URL/JSON wrapper) on the student pickup view. The admin decoder is lenient (also tolerates `?t=<token>` / last-path-segment URLs or `{token}` JSON), but raw token is the agreed contract.
 
 ## BIA strategic context
 
-BIA (Bridging Internationals Association) is a 1,500+ member international student community at USC, founded in 2024. Three pillars: cultural bridge-building, technology + innovation, career development. Community reach: 3,500+ social followers, 80+ vetted cohort fellows across 4 interview-based rounds, 15+ flagship events per year.
+BIA (Bridging Internationals Association) is a 1,500+ member international student community at USC, founded in 2024 (see **About BIA** above for the full positioning). It works at the intersection of humanity, technology, and art. Community reach: 3,500+ social followers, 80+ vetted cohort fellows across 4 interview-based rounds, 15+ flagship events per year.
 
 When making technical decisions for this repo:
 
