@@ -16,6 +16,11 @@ export interface TransitionPolicy {
   terminal: ReadonlySet<string>;
   /** Off-path exception states — enter from / exit to anywhere (while non-terminal). */
   branch: ReadonlySet<string>;
+  /**
+   * Explicitly sanctioned edges ("from>to") that beat every other rule —
+   * including terminal. Keep this list tiny and deliberate.
+   */
+  overrides?: ReadonlySet<string>;
 }
 
 export type TransitionResult = { ok: true } | { ok: false; reason: string };
@@ -26,6 +31,7 @@ export function checkTransition(
   to: string,
 ): TransitionResult {
   if (from === to) return { ok: true };
+  if (policy.overrides?.has(`${from}>${to}`)) return { ok: true };
   if (policy.terminal.has(from)) {
     return { ok: false, reason: `${from} is a final state and cannot change` };
   }
@@ -46,6 +52,11 @@ export const PARCEL_TRANSITION: TransitionPolicy = {
   order: ["expected", "received_cn", "in_transit", "arrived_us", "picked_up"],
   terminal: new Set(["picked_up"]),
   branch: new Set(["lost", "returned", "disputed"]),
+  // D3 (2026-07-03): the one sanctioned exit from picked_up — contest a
+  // (possibly wrong) confirmation. Undo itself is the super_admin-only
+  // admin_revert_pickup RPC, not a PATCH. DB enforces the same rule
+  // (migration 20260703000001).
+  overrides: new Set(["picked_up>disputed"]),
 };
 
 export const SHIPMENT_TRANSITION: TransitionPolicy = {

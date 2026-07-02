@@ -21,9 +21,14 @@ interface PickupScannerProps {
   onToken: (token: string) => void;
   /** True while a verify request is in flight (pauses the "再次扫码" button). */
   busy?: boolean;
+  /**
+   * Bump this counter to re-arm the camera after a verify outcome — the desk
+   * scans the next student's parcel with zero extra taps (SR-2).
+   */
+  rearmSignal?: number;
 }
 
-export function PickupScanner({ onToken, busy }: PickupScannerProps) {
+export function PickupScanner({ onToken, busy, rearmSignal }: PickupScannerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const controlsRef = useRef<ScannerControls | null>(null);
   // Keep the latest onToken without re-subscribing the camera effect.
@@ -105,6 +110,19 @@ export function PickupScanner({ onToken, busy }: PickupScannerProps) {
     void start();
     return () => teardown();
   }, [start, teardown]);
+
+  // Re-arm after each verify outcome (parent bumps rearmSignal) so the officer
+  // scans the next parcel without tapping 再次扫码. Only needed once a decode
+  // has torn the camera down.
+  const decodedRef = useRef(false);
+  useEffect(() => {
+    decodedRef.current = decoded;
+  }, [decoded]);
+  useEffect(() => {
+    if (rearmSignal && rearmSignal > 0 && decodedRef.current) {
+      void start();
+    }
+  }, [rearmSignal, start]);
 
   return (
     <div className="space-y-3">

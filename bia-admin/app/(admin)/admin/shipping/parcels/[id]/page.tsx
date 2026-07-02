@@ -12,7 +12,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { toast } from "sonner";
 
-import { useCanWrite } from "@/lib/auth/role-context";
+import { useCanWrite, useRole } from "@/lib/auth/role-context";
+import { roleAtLeast } from "@biboyang425/bia-shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -63,6 +64,8 @@ function fmtTime(iso: string): string {
 export default function AdminParcelDetailPage() {
   const { id } = useParams<{ id: string }>();
   const canWrite = useCanWrite();
+  const role = useRole();
+  const canRevert = roleAtLeast(role, "super_admin");
   const [parcel, setParcel] = useState<Parcel | null>(null);
   const [events, setEvents] = useState<ParcelEvent[]>([]);
   const [shipment, setShipment] = useState<Shipment | null>(null);
@@ -184,23 +187,84 @@ export default function AdminParcelDetailPage() {
     await handleSave(patch);
   };
 
-  const handleConfirmPickup = async () => {
+  const handleConfirmPickup = async (force = false) => {
     if (!parcel) return;
     setConfirming(true);
     try {
       const res = await fetch(
         `/api/admin/shipping/parcels/${id}/confirm-pickup`,
-        { method: "POST" },
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ force }),
+        },
       );
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
+        requires_payment?: boolean;
+        amount_owed_cents?: number;
+      };
       if (!res.ok) {
-        const err = (await res.json().catch(() => ({}))) as { error?: string };
-        toast.error(err.error ?? "核销失败");
+        toast.error(data.message ?? data.error ?? "核销失败");
+        return;
+      }
+      if (data.requires_payment) {
+        // D2: money due — confirm-anyway needs an explicit officer decision.
+        const amount = ((data.amount_owed_cents ?? 0) / 100).toFixed(2);
+        setConfirming(false);
+        if (
+          window.confirm(
+            `该包裹未记录收款（应收 ¥${amount}）。已向学生收款或仍要核销？\n核销后请到批次名册记录收款。`,
+          )
+        ) {
+          await handleConfirmPickup(true);
+        }
         return;
       }
       toast.success("已确认取件");
       await loadParcel();
     } catch {
       toast.error("核销失败");
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  const handleRevertPickup = async () => {
+    if (!parcel) return;
+    const reason = window.prompt(
+      "撤销取件（picked_up → 到达美国）需要填写原因（会记录在时间线和审计日志）：",
+    );
+    if (reason == null) return;
+    if (reason.trim().length < 2) {
+      toast.error("请填写至少 2 个字符的撤销原因");
+      return;
+    }
+    if (!window.confirm(`确认撤销这件包裹的取件记录？\n原因：${reason.trim()}`))
+      return;
+    setConfirming(true);
+    try {
+      const res = await fetch(
+        `/api/admin/shipping/parcels/${id}/revert-pickup`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason: reason.trim() }),
+        },
+      );
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          detail?: string;
+        };
+        toast.error(err.detail ?? err.error ?? "撤销失败");
+        return;
+      }
+      toast.success("已撤销取件，包裹回到「到达美国」");
+      await loadParcel();
+    } catch {
+      toast.error("撤销失败");
     } finally {
       setConfirming(false);
     }
@@ -270,12 +334,35 @@ export default function AdminParcelDetailPage() {
                 </p>
               </div>
             )}
+            {parcel.amount_owed_cents != null && (
+              <p className="text-sm">
+                应收 ¥{(parcel.amount_owed_cents / 100).toFixed(2)} ·{" "}
+                {parcel.paid_at ? (
+                  <span className="font-medium text-emerald-600">已收款</span>
+                ) : (
+                  <span className="font-medium text-amber-600">未收款</span>
+                )}
+              </p>
+            )}
             {parcel.status === "picked_up" ? (
-              <p className="text-sm font-medium text-emerald-600">已取件 ✓</p>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-emerald-600">已取件 ✓</p>
+                {canRevert && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleRevertPickup}
+                    disabled={confirming}
+                  >
+                    {confirming ? "处理中…" : "撤销取件（需填原因）"}
+                  </Button>
+                )}
+              </div>
             ) : parcel.status === "arrived_us" && canWrite ? (
               <Button
                 type="button"
-                onClick={handleConfirmPickup}
+                onClick={() => void handleConfirmPickup()}
                 disabled={confirming}
               >
                 {confirming ? "处理中…" : "确认取件"}
