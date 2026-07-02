@@ -29,6 +29,8 @@ import {
 import { StatusProgress } from "@/components/shipping/StatusProgress";
 import { BatchProgress } from "@/components/shipping/BatchProgress";
 import { ParcelStatusPill } from "@/components/shipping/ParcelStatusPill";
+import { useCanWrite } from "@/lib/auth/role-context";
+import { SHIPMENT_STATUS_LABELS, errText } from "@/lib/shipping/labels";
 import {
   PARCEL_BRANCH_STATUSES,
   PARCEL_STATUS_META,
@@ -53,17 +55,6 @@ const FORWARD_ADVANCE_TARGETS: ParcelStatus[] = PARCEL_STEPS.filter(
 );
 const BRANCH_TARGET_SET = new Set<ParcelStatus>(PARCEL_BRANCH_STATUSES);
 
-const SHIPMENT_STATUS_LABELS: Record<ShipmentStatus, string> = {
-  forming: "组建中",
-  sealed: "已封箱",
-  departed_cn: "国内发出",
-  customs: "清关中",
-  arrived_us: "到达美国",
-  pickup_open: "可取件",
-  pickup_closed: "已关闭",
-  archived: "已归档",
-};
-
 function toLocalInput(ts: string | null): string {
   if (!ts) return "";
   const d = new Date(ts);
@@ -77,6 +68,7 @@ function fromLocalInput(v: string): string | null {
 
 export default function AdminShipmentDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const canWrite = useCanWrite();
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [parcels, setParcels] = useState<Parcel[]>([]);
   const [unassigned, setUnassigned] = useState<Parcel[]>([]);
@@ -100,6 +92,7 @@ export default function AdminShipmentDetailPage() {
   // Attach flow
   const [showAttach, setShowAttach] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [attachSearch, setAttachSearch] = useState("");
 
   // Bulk advance all parcels in this batch
   const [bulkStatus, setBulkStatus] = useState<ParcelStatus | "">("");
@@ -166,15 +159,18 @@ export default function AdminShipmentDetailPage() {
         body: JSON.stringify(patch),
       });
       if (!res.ok) {
-        const err = (await res.json().catch(() => ({}))) as { error?: string };
-        toast.error(err.error ?? "保存失败");
+        const err = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          detail?: string;
+        };
+        toast.error(errText(err, "保存失败"));
         return false;
       }
       toast.success("已保存");
       await load();
       return true;
     } catch {
-      toast.error("保存失败");
+      toast.error("保存失败，请检查网络后重试");
       return false;
     } finally {
       setSaving(false);
@@ -242,7 +238,7 @@ export default function AdminShipmentDetailPage() {
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        toast.error(err.error ?? "附加失败");
+        toast.error(errText(err, "附加失败"));
         return;
       }
       const data = (await res.json()) as { updated: number; skipped?: number };
@@ -254,7 +250,45 @@ export default function AdminShipmentDetailPage() {
       setShowAttach(false);
       await load();
     } catch {
-      toast.error("附加失败");
+      toast.error("附加失败，请检查网络后重试");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Inverse of attach: only meaningful while the batch is still at the
+  // warehouse (forming/sealed) and the parcel is in_transit on THIS batch.
+  const detachParcel = async (p: Parcel) => {
+    if (
+      !window.confirm(
+        `把「${p.member_id} · ${p.description}」移出本批次？包裹会回到「仓库签收」待重新编批。`,
+      )
+    )
+      return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/admin/shipping/shipments/${id}/detach`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parcel_ids: [p.id] }),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          detail?: string;
+        };
+        toast.error(errText(err, "移出失败"));
+        return;
+      }
+      const data = (await res.json()) as { updated: number };
+      if (data.updated === 0) {
+        toast.error("包裹状态已变化，未移出（刷新后重试）");
+      } else {
+        toast.success("已移出批次，包裹回到「仓库签收」");
+      }
+      await load();
+    } catch {
+      toast.error("移出失败，请检查网络后重试");
     } finally {
       setSaving(false);
     }
@@ -286,7 +320,7 @@ export default function AdminShipmentDetailPage() {
       );
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        toast.error(err.error ?? "批量推进失败");
+        toast.error(errText(err, "批量推进失败"));
         return;
       }
       const data = (await res.json()) as { updated: number; skipped: number };
@@ -306,6 +340,19 @@ export default function AdminShipmentDetailPage() {
   if (error || !shipment) {
     return <p className="p-8 text-sm text-rose-600">{error ?? "未找到"}</p>;
   }
+
+  const q = attachSearch.trim().toLowerCase();
+  const filteredUnassigned = q
+    ? unassigned.filter(
+        (p) =>
+          (p.member_id ?? "").toLowerCase().includes(q) ||
+          (p.description ?? "").toLowerCase().includes(q) ||
+          (p.tracking_cn ?? "").toLowerCase().includes(q),
+      )
+    : unassigned;
+  // Detach is only meaningful while the batch is still at the warehouse.
+  const canDetach =
+    canWrite && (shipment.status === "forming" || shipment.status === "sealed");
 
   const next = nextShipmentStatus(shipment.status);
   const steps = SHIPMENT_STEPS.map((k) => ({
@@ -336,7 +383,7 @@ export default function AdminShipmentDetailPage() {
       {/* Progress */}
       <div className="space-y-3">
         <StatusProgress steps={steps} current={shipment.status} />
-        {next && (
+        {next && canWrite && (
           <Button
             type="button"
             variant="secondary"
@@ -462,9 +509,13 @@ export default function AdminShipmentDetailPage() {
               />
             </div>
           </div>
-          <Button type="button" onClick={saveAll} disabled={saving}>
-            {saving ? "保存中…" : "保存所有修改"}
-          </Button>
+          {canWrite ? (
+            <Button type="button" onClick={saveAll} disabled={saving}>
+              {saving ? "保存中…" : "保存所有修改"}
+            </Button>
+          ) : (
+            <p className="text-xs text-muted-foreground">只读：无法修改</p>
+          )}
         </CardContent>
       </Card>
 
@@ -481,7 +532,7 @@ export default function AdminShipmentDetailPage() {
       </Card>
 
       {/* Bulk-advance all parcels in this batch (one action → whole flight) */}
-      {parcels.length > 0 && (
+      {parcels.length > 0 && canWrite && (
         <Card>
           <CardHeader className="p-4">
             <CardTitle className="text-base">批量推进包裹状态</CardTitle>
@@ -542,13 +593,15 @@ export default function AdminShipmentDetailPage() {
                 导出 CSV
               </a>
             )}
-            <Button
-              type="button"
-              variant={showAttach ? "outline" : "secondary"}
-              onClick={() => setShowAttach((v) => !v)}
-            >
-              {showAttach ? "取消" : `+ 关联（${unassigned.length} 待关联）`}
-            </Button>
+            {canWrite && (
+              <Button
+                type="button"
+                variant={showAttach ? "outline" : "secondary"}
+                onClick={() => setShowAttach((v) => !v)}
+              >
+                {showAttach ? "取消" : `+ 关联（${unassigned.length} 待关联）`}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -564,23 +617,37 @@ export default function AdminShipmentDetailPage() {
                 </p>
               ) : (
                 <>
+                  <Input
+                    value={attachSearch}
+                    onChange={(e) => setAttachSearch(e.target.value)}
+                    placeholder="搜 Member ID / 描述 / 单号…"
+                    className="h-8"
+                  />
+                  {unassigned.length >= 200 && (
+                    <p className="text-xs text-amber-700">
+                      仅显示前 200 个待关联包裹 — 请用上面的搜索缩小范围。
+                    </p>
+                  )}
                   <label className="flex cursor-pointer items-center gap-2 border-b px-2 py-1 text-xs font-medium hover:bg-muted">
                     <input
                       type="checkbox"
                       checked={
-                        selected.size === unassigned.length &&
-                        unassigned.length > 0
+                        selected.size === filteredUnassigned.length &&
+                        filteredUnassigned.length > 0
                       }
                       onChange={(e) => {
                         if (e.target.checked)
-                          setSelected(new Set(unassigned.map((p) => p.id)));
+                          setSelected(
+                            new Set(filteredUnassigned.map((p) => p.id)),
+                          );
                         else setSelected(new Set());
                       }}
                     />
-                    全选 · 已选 {selected.size} / {unassigned.length}
+                    全选（当前筛选） · 已选 {selected.size} /{" "}
+                    {filteredUnassigned.length}
                   </label>
                   <ul className="max-h-80 space-y-1 overflow-y-auto">
-                    {unassigned.map((p) => (
+                    {filteredUnassigned.map((p) => (
                       <li key={p.id}>
                         <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-xs hover:bg-muted">
                           <input
@@ -630,6 +697,7 @@ export default function AdminShipmentDetailPage() {
                   <TableHead className="px-4">Description</TableHead>
                   <TableHead className="w-32 px-4">Status</TableHead>
                   <TableHead className="w-24 px-4">重量</TableHead>
+                  {canDetach && <TableHead className="w-20 px-4"></TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -654,6 +722,21 @@ export default function AdminShipmentDetailPage() {
                         ? `${(p.weight_grams / 1000).toFixed(1)} kg`
                         : "—"}
                     </TableCell>
+                    {canDetach && (
+                      <TableCell className="px-4 py-2">
+                        {p.status === "in_transit" && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={saving}
+                            onClick={() => void detachParcel(p)}
+                          >
+                            移出
+                          </Button>
+                        )}
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

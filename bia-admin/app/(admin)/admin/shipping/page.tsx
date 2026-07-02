@@ -57,11 +57,40 @@ export default async function ShippingOverviewPage() {
   const admin = createBiaServiceRoleClient();
   const head = { count: "exact" as const, head: true };
 
-  const counts = await Promise.all(
-    STAT_DEFS.map((s) =>
-      admin.from("parcels").select("id", head).eq("status", s.key),
+  const [counts, pendingPack, pendingRequests] = await Promise.all([
+    Promise.all(
+      STAT_DEFS.map((s) =>
+        admin.from("parcels").select("id", head).eq("status", s.key),
+      ),
     ),
-  );
+    // Open work queues — these used to be invisible until someone happened to
+    // open the page (SR-7).
+    admin
+      .from("pack_requests")
+      .select("id", head)
+      .in("status", ["pending", "contacted"]),
+    admin
+      .from("shipment_requests")
+      .select("id", head)
+      .in("status", ["pending", "contacted"]),
+  ]);
+
+  const QUEUE_DEFS = [
+    {
+      key: "pack",
+      label: "打包申请待处理",
+      hint: "pending / contacted 的打包申请",
+      href: "/admin/shipping/pack-requests?status=pending",
+      count: pendingPack.count ?? 0,
+    },
+    {
+      key: "requests",
+      label: "发货请求待处理",
+      hint: "pending / contacted 的发货请求",
+      href: "/admin/shipping/requests?status=pending",
+      count: pendingRequests.count ?? 0,
+    },
+  ] as const;
 
   return (
     <div className="space-y-8 p-8">
@@ -82,6 +111,24 @@ export default async function ShippingOverviewPage() {
             <div className="text-sm font-medium text-foreground">{s.label}</div>
             <div className="mt-1 text-2xl font-semibold tabular-nums">
               {counts[i].count ?? 0}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{s.hint}</p>
+          </Link>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {QUEUE_DEFS.map((s) => (
+          <Link
+            key={s.key}
+            href={s.href}
+            className={`group rounded-lg border p-5 transition-colors hover:border-primary ${
+              s.count > 0 ? "border-amber-300 bg-amber-50" : "bg-card"
+            }`}
+          >
+            <div className="text-sm font-medium text-foreground">{s.label}</div>
+            <div className="mt-1 text-2xl font-semibold tabular-nums">
+              {s.count}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">{s.hint}</p>
           </Link>

@@ -6,6 +6,8 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useCanWrite } from "@/lib/auth/role-context";
+import { errText } from "@/lib/shipping/labels";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +22,7 @@ import {
 type RouteDraft = Partial<ShippingRoute> & { id: string };
 
 export default function AdminShippingRoutesPage() {
+  const canWrite = useCanWrite();
   const [routes, setRoutes] = useState<ShippingRoute[]>([]);
   const [drafts, setDrafts] = useState<Record<string, RouteDraft>>({});
   const [loading, setLoading] = useState(true);
@@ -65,7 +68,7 @@ export default function AdminShippingRoutesPage() {
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        toast.error(err.error ?? "保存失败");
+        toast.error(errText(err, "保存失败"));
         return;
       }
       const updated = (await res.json()) as ShippingRoute;
@@ -76,6 +79,8 @@ export default function AdminShippingRoutesPage() {
         return nextState;
       });
       toast.success("已保存");
+    } catch {
+      toast.error("保存失败，请检查网络后重试");
     } finally {
       setSavingId(null);
     }
@@ -238,7 +243,7 @@ export default function AdminShippingRoutesPage() {
                 <Button
                   type="button"
                   onClick={() => patchRoute(r.id)}
-                  disabled={!dirty || savingId === r.id}
+                  disabled={!canWrite || !dirty || savingId === r.id}
                 >
                   {savingId === r.id ? "保存中…" : dirty ? "保存" : "未修改"}
                 </Button>

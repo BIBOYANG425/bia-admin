@@ -53,7 +53,7 @@ function numOrNull(s: string): number | null {
 }
 
 function fmtTime(iso: string): string {
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat("zh-CN", {
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -82,6 +82,8 @@ export default function AdminParcelDetailPage() {
   const [draftNotes, setDraftNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [reassignOpen, setReassignOpen] = useState(false);
+  const [reassignMember, setReassignMember] = useState("");
 
   const loadParcel = useCallback(async () => {
     setLoading(true);
@@ -231,6 +233,47 @@ export default function AdminParcelDetailPage() {
     }
   };
 
+  const handleReassign = async () => {
+    const member = reassignMember.trim();
+    if (!parcel || !member || member === parcel.member_id) return;
+    if (
+      !window.confirm(
+        `把这个包裹重新指派给「${member}」？通知、学生端可见性和取件码都会跟随新学生。`,
+      )
+    )
+      return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/admin/shipping/parcels/${id}/reassign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ member_id: member }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        detail?: string;
+        linked?: boolean;
+      };
+      if (!res.ok) {
+        toast.error(data.detail ?? data.error ?? "重新指派失败");
+        return;
+      }
+      if (data.linked) {
+        toast.success(`已重新指派给 ${member}（已关联学生档案）`);
+      } else {
+        toast.warning(
+          `已改为 ${member}，但没有匹配到 students 档案 — 学生端将看不到该包裹，通知也不会发送。`,
+        );
+      }
+      setReassignOpen(false);
+      await loadParcel();
+    } catch {
+      toast.error("重新指派失败，请检查网络后重试");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleRevertPickup = async () => {
     if (!parcel) return;
     const reason = window.prompt(
@@ -297,15 +340,54 @@ export default function AdminParcelDetailPage() {
           <h1 className="mt-1 text-2xl font-bold tracking-tight">
             {parcel.description}
           </h1>
-          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span className="font-medium">{parcel.member_id}</span>
+            {!parcel.student_id && (
+              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-700">
+                未绑学生档案
+              </span>
+            )}
             {parcel.shipping_method && (
               <span>
                 · {SHIPPING_METHOD_META[parcel.shipping_method].icon}{" "}
                 {SHIPPING_METHOD_META[parcel.shipping_method].label}
               </span>
             )}
+            {canWrite && parcel.status !== "picked_up" && (
+              <button
+                type="button"
+                className="text-primary hover:underline"
+                onClick={() => {
+                  setReassignMember(parcel.member_id);
+                  setReassignOpen((v) => !v);
+                }}
+              >
+                重新指派
+              </button>
+            )}
           </div>
+          {reassignOpen && (
+            <div className="mt-2 flex items-center gap-2">
+              <Input
+                value={reassignMember}
+                onChange={(e) => setReassignMember(e.target.value)}
+                placeholder="新 Member ID"
+                className="h-8 w-44"
+              />
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => void handleReassign()}
+                disabled={
+                  saving ||
+                  !reassignMember.trim() ||
+                  reassignMember.trim() === parcel.member_id
+                }
+              >
+                确认指派
+              </Button>
+            </div>
+          )}
         </div>
         <ParcelStatusPill status={parcel.status} />
       </div>

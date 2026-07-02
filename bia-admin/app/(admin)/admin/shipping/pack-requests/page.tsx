@@ -6,6 +6,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { useCanWrite } from "@/lib/auth/role-context";
+import { shipmentStatusLabel } from "@/lib/shipping/labels";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,7 +42,7 @@ const STATUS_CLASS: Record<PackRequestStatus, string> = {
 const OPEN_SHIPMENT_STATUSES = ["forming", "sealed"] as const;
 
 function fmtDate(iso: string): string {
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat("zh-CN", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -48,6 +50,7 @@ function fmtDate(iso: string): string {
 }
 
 export default function AdminPackRequestsPage() {
+  const canWrite = useCanWrite();
   const [requests, setRequests] = useState<PackRequestWithParcels[]>([]);
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [pickedShipment, setPickedShipment] = useState<Record<string, string>>(
@@ -338,7 +341,7 @@ export default function AdminPackRequestsPage() {
                             <option value="">选一个批次…</option>
                             {shipments.map((s) => (
                               <option key={s.id} value={s.id}>
-                                {s.name} [{s.status}]
+                                {s.name}（{shipmentStatusLabel(s.status)}）
                                 {s.carrier ? ` · ${s.carrier}` : ""}
                               </option>
                             ))}
@@ -348,7 +351,9 @@ export default function AdminPackRequestsPage() {
                             className="shrink-0"
                             onClick={() => attachToShipment(r.id)}
                             disabled={
-                              !pickedShipment[r.id] || attachingId === r.id
+                              !canWrite ||
+                              !pickedShipment[r.id] ||
+                              attachingId === r.id
                             }
                           >
                             {attachingId === r.id ? "处理中…" : "拍进批次"}
@@ -421,7 +426,7 @@ export default function AdminPackRequestsPage() {
                   <Button
                     type="button"
                     onClick={() => save(r.id)}
-                    disabled={!dirty || savingId === r.id}
+                    disabled={!canWrite || !dirty || savingId === r.id}
                   >
                     {savingId === r.id ? "保存中…" : dirty ? "保存" : "未修改"}
                   </Button>

@@ -277,9 +277,19 @@ export default function BulkIntakePage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0 text-sm text-muted-foreground">
-            以下单号对应多个待入库包裹，请到包裹列表手动入库：
-            <div className="mt-2 font-mono text-xs">
-              {ambiguous.map((a) => a.code).join("、")}
+            以下单号对应多个待入库包裹，点击单号到包裹列表手动处理：
+            <div className="mt-2 flex flex-wrap gap-2 font-mono text-xs">
+              {ambiguous.map((a) => (
+                <a
+                  key={a.code}
+                  href={`/admin/shipping/parcels?search=${encodeURIComponent(a.code)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded border px-1.5 py-0.5 hover:bg-muted hover:underline"
+                >
+                  {a.code} ↗
+                </a>
+              ))}
             </div>
           </CardContent>
         </Card>
@@ -293,8 +303,21 @@ export default function BulkIntakePage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0 text-sm text-muted-foreground">
-            没找到「待入库」且单号一致的包裹（可能学生还没填单号，或已入库）：
-            <div className="mt-2 font-mono text-xs">{unmatched.join("、")}</div>
+            没找到「待入库」且单号一致的包裹（可能学生还没填单号，或已入库）。
+            点击单号到包裹列表核实，或到「包裹 → 新建」代录 walk-in：
+            <div className="mt-2 flex flex-wrap gap-2 font-mono text-xs">
+              {unmatched.map((code) => (
+                <a
+                  key={code}
+                  href={`/admin/shipping/parcels?search=${encodeURIComponent(code)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded border px-1.5 py-0.5 hover:bg-muted hover:underline"
+                >
+                  {code} ↗
+                </a>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}

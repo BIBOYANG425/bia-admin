@@ -198,7 +198,15 @@ function RosterRow({
     const trimmed = amount.trim();
     const cents = trimmed === "" ? null : Math.round(Number(trimmed) * 100);
     if (trimmed !== "" && (cents === null || !Number.isFinite(cents) || cents < 0)) {
-      return; // ignore invalid input
+      // Invalid amounts used to be silently swallowed — the officer thought
+      // they saved (SR-7). Surface it and restore the stored value.
+      toast.error(`金额无效：「${trimmed}」— 请输入非负数字（元）`);
+      setAmount(
+        parcel.amount_owed_cents != null
+          ? (parcel.amount_owed_cents / 100).toFixed(2)
+          : "",
+      );
+      return;
     }
     const current = parcel.amount_owed_cents ?? null;
     if (cents === current) return;

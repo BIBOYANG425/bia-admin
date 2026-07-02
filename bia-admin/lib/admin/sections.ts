@@ -1,5 +1,6 @@
 import {
   Boxes,
+  Gauge,
   Calendar,
   ClipboardCheck,
   ClipboardList,
@@ -66,6 +67,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { href: "/admin/squad",    label: "Squad",    icon: Users2,    group: "community", enabled: true },
 
   // Phase 3 — 集运 (live: parity-checked + prod smoke passed 2026-06-05, slice 9)
+  { href: "/admin/shipping",                label: "集运·总览", icon: Gauge,        group: "operations", enabled: true },
   { href: "/admin/shipping/parcels",        label: "集运·包裹", icon: Package,      group: "operations", enabled: true },
   { href: "/admin/shipping/parcels/intake", label: "集运·入库", icon: PackagePlus,  group: "operations", enabled: true, minRole: "editor" },
   { href: "/admin/shipping/shipments",      label: "集运·批次", icon: Ship,         group: "operations", enabled: true },
