@@ -35,6 +35,7 @@ vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
   createBiaServiceRoleClient: () => ({ from: fromMock, rpc: rpcMock }),
 }));
 
+import { writeAudit } from "@/lib/admin/audit-log";
 import { POST } from "../route";
 
 const editor = {
@@ -142,6 +143,13 @@ describe("POST /api/admin/shipping/pack-requests/[id]/attach", () => {
       p_shipment_id: "s1",
       p_actor_user_id: "admin-3",
     });
+    expect(vi.mocked(writeAudit)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "pack_request.attach",
+        entity_id: "pr1",
+        payload: expect.objectContaining({ approved: true }),
+      }),
+    );
   });
 
   it("reports a partial attach as NOT approved — request stays attachable (SR-1)", async () => {

@@ -38,6 +38,7 @@ vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
   createBiaServiceRoleClient: () => ({ from: fromMock }),
 }));
 
+import { writeAudit } from "@/lib/admin/audit-log";
 import { GET, POST } from "../route";
 
 const viewer = {
@@ -65,10 +66,13 @@ function postReq(body: unknown) {
 }
 
 describe("GET /api/admin/shipping/parcels", () => {
+  const orCalls: string[] = [];
+
   beforeEach(() => {
     requireRoleMock.mockReset();
     fromMock.mockReset();
     rangeMock.mockReset();
+    orCalls.length = 0;
     requireRoleMock.mockResolvedValue(viewer);
     rangeMock.mockResolvedValue({
       data: [{ id: "p1" }],
@@ -79,7 +83,10 @@ describe("GET /api/admin/shipping/parcels", () => {
       order: () => builder,
       eq: () => builder,
       is: () => builder,
-      or: () => builder,
+      or: (arg: string) => {
+        orCalls.push(arg);
+        return builder;
+      },
       range: rangeMock,
     };
     fromMock.mockImplementation(() => ({ select: () => builder }));
@@ -112,6 +119,18 @@ describe("GET /api/admin/shipping/parcels", () => {
     expect(rangeMock).toHaveBeenCalledWith(20, 29);
   });
 
+  it("passes SANITIZED search terms into the PostgREST .or() filter (SR-4)", async () => {
+    // sanitizeSearchTerm strips , ( ) * " — proves the route actually calls
+    // it, not just that the pure function works in isolation.
+    const res = await GET(getReq(`?search=${encodeURIComponent('ab,c(d)*e"f')}`));
+    expect(res.status).toBe(200);
+    expect(orCalls).toHaveLength(1);
+    expect(orCalls[0]).toContain("abcdef");
+    expect(orCalls[0]).toBe(
+      "description.ilike.%abcdef%,tracking_cn.ilike.%abcdef%,member_id.ilike.%abcdef%",
+    );
+  });
+
   it("clamps limit to 200", async () => {
     const res = await GET(getReq("?limit=500"));
     const body = await res.json();
@@ -133,10 +152,12 @@ describe("POST /api/admin/shipping/parcels", () => {
   });
 
   it("rejects a body missing member_id", async () => {
+    vi.mocked(writeAudit).mockClear();
     const res = await POST(postReq({ description: "衣服一箱" }));
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("invalid_body");
     expect(insertSingleMock).not.toHaveBeenCalled();
+    expect(vi.mocked(writeAudit)).not.toHaveBeenCalled();
   });
 
   it("rejects an out-of-range status (not expected/received_cn)", async () => {
@@ -176,6 +197,14 @@ describe("POST /api/admin/shipping/parcels", () => {
       status: "expected",
     });
     expect(captured.parcels).not.toHaveProperty("received_at");
+    // Mandatory-audit guardrail (SR-4): the write must be audited.
+    expect(vi.mocked(writeAudit)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "parcel.create",
+        entity_type: "parcel",
+        entity_id: "new-1",
+      }),
+    );
   });
 
   it("stamps received_at when status is received_cn", async () => {

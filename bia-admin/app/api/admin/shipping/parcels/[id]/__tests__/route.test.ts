@@ -37,6 +37,7 @@ vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
 // the helper directly to keep it a no-op in tests.
 vi.mock("@/lib/admin/audit-log", () => ({ writeAudit: vi.fn() }));
 
+import { writeAudit } from "@/lib/admin/audit-log";
 import { PATCH } from "../route";
 
 const editor = {
@@ -105,6 +106,9 @@ describe("PATCH /api/admin/shipping/parcels/[id]", () => {
       p_actor_user_id: "admin-9",
       p_patch: { status: "received_cn", weight_grams: 1500 },
     });
+    expect(vi.mocked(writeAudit)).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "parcel.update", entity_id: "p1" }),
+    );
   });
 
   it("409s on an invalid parcel transition (out of picked_up) without calling the RPC", async () => {
@@ -115,10 +119,12 @@ describe("PATCH /api/admin/shipping/parcels/[id]", () => {
         }),
       }),
     }));
+    vi.mocked(writeAudit).mockClear();
     const res = await PATCH(patchReq({ status: "in_transit" }), ctxFor("p1"));
     expect(res.status).toBe(409);
     expect((await res.json()).error).toBe("invalid_transition");
     expect(rpcMock).not.toHaveBeenCalled();
+    expect(vi.mocked(writeAudit)).not.toHaveBeenCalled();
   });
 
   it("strips shipment_id from the body — attachment must go through /attach (SR-1)", async () => {

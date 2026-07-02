@@ -35,6 +35,7 @@ vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
   createBiaServiceRoleClient: () => ({ from: fromMock, rpc: rpcMock }),
 }));
 
+import { writeAudit } from "@/lib/admin/audit-log";
 import { POST } from "../route";
 
 const editor = {
@@ -106,6 +107,13 @@ describe("POST /api/admin/shipping/shipments/[id]/attach", () => {
       p_shipment_id: "s1",
       p_actor_user_id: "admin-7",
     });
+    expect(vi.mocked(writeAudit)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "shipment.attach",
+        entity_id: "s1",
+        payload: expect.objectContaining({ requested: 2, updated: 2 }),
+      }),
+    );
   });
 
   it("reports parcels the RPC skipped as ineligible (not received_cn)", async () => {

@@ -35,6 +35,7 @@ vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
   createBiaServiceRoleClient: () => ({ from: fromMock }),
 }));
 
+import { writeAudit } from "@/lib/admin/audit-log";
 import { GET, POST } from "../route";
 
 const editor = {
@@ -99,6 +100,9 @@ describe("/api/admin/shipping/shipments", () => {
     const res = await POST(postReq({ name: "Batch A", carrier: "DHL" }));
     expect(res.status).toBe(201);
     expect(await res.json()).toMatchObject({ id: "s9", name: "Batch A" });
+    expect(vi.mocked(writeAudit)).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "shipment.create", entity_id: "s9" }),
+    );
   });
 
   it("POST rejects an empty name", async () => {
