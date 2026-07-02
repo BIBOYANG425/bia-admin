@@ -40,6 +40,15 @@ describe("checkTransition — branch / exception states", () => {
   it("parcel: cannot leave picked_up (terminal)", () => {
     expect(checkTransition(PARCEL_TRANSITION, "picked_up", "arrived_us").ok).toBe(false);
   });
+  it("parcel: picked_up → disputed is the one sanctioned exit (D3 2026-07-03)", () => {
+    // Contest path for a wrong confirmation; the actual undo is the
+    // super_admin-only admin_revert_pickup RPC, never a PATCH.
+    expect(checkTransition(PARCEL_TRANSITION, "picked_up", "disputed").ok).toBe(true);
+    // Every other exit from picked_up stays blocked, including other branches.
+    expect(checkTransition(PARCEL_TRANSITION, "picked_up", "lost").ok).toBe(false);
+    expect(checkTransition(PARCEL_TRANSITION, "picked_up", "returned").ok).toBe(false);
+    expect(checkTransition(PARCEL_TRANSITION, "picked_up", "expected").ok).toBe(false);
+  });
   it("pack-request: declined/cancelled are reachable but terminal (no reopen)", () => {
     expect(checkTransition(PACK_REQUEST_TRANSITION, "pending", "declined").ok).toBe(true);
     expect(checkTransition(PACK_REQUEST_TRANSITION, "contacted", "cancelled").ok).toBe(true);
