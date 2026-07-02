@@ -12,9 +12,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import type { Shipment } from "@biboyang425/bia-shared/shipping";
+import { shipmentStatusLabel } from "@/lib/shipping/labels";
 
 function fmtDate(iso: string): string {
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat("zh-CN", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -164,7 +165,7 @@ export default function AdminShipmentsPage() {
                     <span
                       className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium ${statusClass(s.status)}`}
                     >
-                      {s.status}
+                      {shipmentStatusLabel(s.status)}
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground">

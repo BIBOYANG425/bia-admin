@@ -5,6 +5,8 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useCanWrite } from "@/lib/auth/role-context";
+import { errText } from "@/lib/shipping/labels";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,7 +34,7 @@ const STATUS_CLASS: Record<ShipmentRequestStatus, string> = {
 };
 
 function fmtDate(iso: string): string {
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat("zh-CN", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -40,6 +42,7 @@ function fmtDate(iso: string): string {
 }
 
 export default function AdminShipmentRequestsPage() {
+  const canWrite = useCanWrite();
   const [requests, setRequests] = useState<ShipmentRequest[]>([]);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [loading, setLoading] = useState(true);
@@ -82,7 +85,7 @@ export default function AdminShipmentRequestsPage() {
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        toast.error(err.error ?? "保存失败");
+        toast.error(errText(err, "保存失败"));
         return;
       }
       const updated = (await res.json()) as ShipmentRequest;
@@ -93,6 +96,8 @@ export default function AdminShipmentRequestsPage() {
         return nextState;
       });
       toast.success("已保存");
+    } catch {
+      toast.error("保存失败，请检查网络后重试");
     } finally {
       setSavingId(null);
     }
@@ -227,7 +232,7 @@ export default function AdminShipmentRequestsPage() {
                   <Button
                     type="button"
                     onClick={() => save(r.id)}
-                    disabled={!dirty || savingId === r.id}
+                    disabled={!canWrite || !dirty || savingId === r.id}
                   >
                     {savingId === r.id ? "保存中…" : dirty ? "保存" : "未修改"}
                   </Button>

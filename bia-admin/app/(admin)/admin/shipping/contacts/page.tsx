@@ -7,6 +7,8 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { toast } from "sonner";
+import { useCanWrite } from "@/lib/auth/role-context";
+import { errText } from "@/lib/shipping/labels";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +29,7 @@ const CONTACT_TYPE_LABELS: Record<ShippingContactType, string> = {
 };
 
 export default function AdminShippingContactsPage() {
+  const canWrite = useCanWrite();
   const [contacts, setContacts] = useState<ShippingContact[]>([]);
   const [drafts, setDrafts] = useState<Record<string, ContactDraft>>({});
   const [loading, setLoading] = useState(true);
@@ -64,7 +67,7 @@ export default function AdminShippingContactsPage() {
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        toast.error(err.error ?? "保存失败");
+        toast.error(errText(err, "保存失败"));
         return;
       }
       const updated = (await res.json()) as ShippingContact;
@@ -75,6 +78,8 @@ export default function AdminShippingContactsPage() {
         return nextState;
       });
       toast.success("已保存");
+    } catch {
+      toast.error("保存失败，请检查网络后重试");
     } finally {
       setSavingId(null);
     }
@@ -231,7 +236,7 @@ export default function AdminShippingContactsPage() {
                             type="file"
                             accept="image/png,image/jpeg,image/webp"
                             className="hidden"
-                            disabled={uploadingId === c.id}
+                            disabled={!canWrite || uploadingId === c.id}
                             onChange={(e) => {
                               const f = e.target.files?.[0];
                               if (f) uploadQr(c.id, f);
@@ -274,7 +279,7 @@ export default function AdminShippingContactsPage() {
                 <Button
                   type="button"
                   onClick={() => patchContact(c.id)}
-                  disabled={!dirty || savingId === c.id}
+                  disabled={!canWrite || !dirty || savingId === c.id}
                 >
                   {savingId === c.id ? "保存中…" : dirty ? "保存" : "未修改"}
                 </Button>
