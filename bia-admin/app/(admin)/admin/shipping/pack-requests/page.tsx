@@ -129,11 +129,21 @@ export default function AdminPackRequestsPage() {
         toast.error(err.error ?? "附加失败");
         return;
       }
-      const data = (await res.json()) as { attached: number; skipped?: number };
-      toast.success(
-        `已附加 ${data.attached} 个包裹 · 申请已标记 approved` +
-          (data.skipped ? ` · 跳过 ${data.skipped} 个（非「仓库签收」状态）` : ""),
-      );
+      const data = (await res.json()) as {
+        attached: number;
+        skipped?: number;
+        approved?: boolean;
+      };
+      if (data.approved) {
+        toast.success(`已附加 ${data.attached} 个包裹 · 申请已标记 approved`);
+      } else {
+        // Partial attach: the request stays attachable — tell the officer to
+        // re-run after the remaining parcels are received (SR-1).
+        toast.warning(
+          `已附加 ${data.attached} 个包裹 · 跳过 ${data.skipped ?? 0} 个（非「仓库签收」状态）。` +
+            "申请未标记 approved — 其余包裹入库后请再次「拍进批次」。",
+        );
+      }
       setPickedShipment((prev) => {
         const nextState = { ...prev };
         delete nextState[requestId];

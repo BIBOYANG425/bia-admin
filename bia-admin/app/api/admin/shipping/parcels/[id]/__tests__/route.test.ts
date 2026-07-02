@@ -121,6 +121,44 @@ describe("PATCH /api/admin/shipping/parcels/[id]", () => {
     expect(rpcMock).not.toHaveBeenCalled();
   });
 
+  it("strips shipment_id from the body — attachment must go through /attach (SR-1)", async () => {
+    // shipment_id is no longer in PatchParcelBody, so zod drops the key and a
+    // shipment_id-only PATCH has no updatable fields left.
+    const res = await PATCH(patchReq({ shipment_id: "s1" }), ctxFor("p1"));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "no_fields" });
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it("maps the RPC's in-txn transition rejection to 409 (race backstop)", async () => {
+    // Route precheck passes on a stale snapshot (arrived_us), but the RPC's
+    // FOR UPDATE re-check sees the concurrent pickup confirm and raises.
+    fromMock.mockImplementation(() => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: () => Promise.resolve({ data: { status: "arrived_us" } }),
+        }),
+      }),
+    }));
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: { message: "parcel_terminal: picked_up -> in_transit" },
+    });
+    const res = await PATCH(patchReq({ status: "in_transit" }), ctxFor("p1"));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("invalid_transition");
+  });
+
+  it("maps the RPC's shipment_id rejection to 400 (defense-in-depth)", async () => {
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: { message: "shipment_id_not_patchable" },
+    });
+    const res = await PATCH(patchReq({ notes: "x" }), ctxFor("p1"));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("shipment_id_not_patchable");
+  });
+
   it("404s when the RPC reports no row updated", async () => {
     rpcMock.mockResolvedValue({ data: null, error: null });
     const res = await PATCH(patchReq({ notes: "x" }), ctxFor("missing"));

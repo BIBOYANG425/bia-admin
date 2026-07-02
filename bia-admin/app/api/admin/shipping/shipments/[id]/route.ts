@@ -122,6 +122,34 @@ export async function PATCH(request: Request, ctx: RouteContext) {
           { status: 409 },
         );
       }
+
+      // archived is terminal with no branch escape — a batch archived while
+      // parcels are still live (not picked_up/lost/returned) strands them
+      // forever: pickup can never re-open and the students' status hint stays
+      // "到了，等 BIA 安排取件". Refuse until every parcel is settled (SR-1).
+      if (patch.status === "archived") {
+        const { count, error: activeErr } = await admin
+          .from("parcels")
+          .select("id", { count: "exact", head: true })
+          .eq("shipment_id", id)
+          .not("status", "in", "(picked_up,lost,returned)");
+        if (activeErr) {
+          return NextResponse.json(
+            { error: "lookup_failed", details: activeErr.message },
+            { status: 500 },
+          );
+        }
+        if ((count ?? 0) > 0) {
+          return NextResponse.json(
+            {
+              error: "shipment_has_active_parcels",
+              detail: `还有 ${count} 个包裹未完成（未取件/未标记丢失或退回），不能归档`,
+              active: count,
+            },
+            { status: 409 },
+          );
+        }
+      }
     }
 
     const { data, error } = await admin

@@ -1,9 +1,10 @@
 // /api/admin/shipping/pack-requests/[id]/attach
 // POST — body { shipment_id }. Atomically (one txn, via admin_attach_pack_request
 // RPC) attaches every received_cn parcel in this pack request to the shipment
-// (received_cn -> in_transit, actor_role='admin') AND marks the request
-// shipment_id + status='approved' — so a parcel move can't land without the
-// request approval, or vice-versa. editor+.
+// (received_cn -> in_transit, actor_role='admin'). The request is marked
+// 'approved' ONLY when every parcel attached (migration 20260703000001, SR-1);
+// a partial attach keeps the request attachable so the officer re-runs it once
+// the remaining parcels are received — no more stranded skipped parcels. editor+.
 // Ported from bia-roommate (Phase-3 slice 5): adminHandler -> withRole.
 
 import { NextResponse } from "next/server";
@@ -123,19 +124,24 @@ export async function POST(request: Request, ctx: RouteContext) {
     }
 
     // attached < total means some parcels were ineligible (not received_cn) and
-    // the RPC skipped them — surface that to the officer.
+    // the RPC skipped them — the request then stays attachable for a re-run.
+    // Compute `approved` from the counts (not the RPC's key) so this route
+    // stays correct against the pre-20260703000001 RPC, which always approved.
     const attachedCount = r.attached ?? 0;
-    const skipped = (r.total ?? 0) - attachedCount;
+    const total = r.total ?? 0;
+    const skipped = total - attachedCount;
+    const approved = total > 0 && attachedCount === total;
     await writeAudit({
       admin_email: auth.user.email,
       action: "pack_request.attach",
       entity_type: "pack_request",
       entity_id: id,
-      payload: { shipment_id: shipmentId, attached: attachedCount, skipped },
+      payload: { shipment_id: shipmentId, attached: attachedCount, skipped, approved },
     });
     return NextResponse.json({
       attached: attachedCount,
       skipped,
+      approved,
       request: r.request ?? null,
     });
   });

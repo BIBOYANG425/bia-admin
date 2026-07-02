@@ -159,6 +159,68 @@ describe("/api/admin/shipping/shipments/[id]", () => {
     expect((await res.json()).error).toBe("invalid_transition");
   });
 
+  it("409s archiving a shipment that still has active parcels (SR-1)", async () => {
+    fromMock.mockImplementation((table: string) => {
+      if (table === "shipments") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({ data: { status: "pickup_closed" } }),
+            }),
+          }),
+          update: () => ({
+            eq: () => ({ select: () => ({ single: updateSingleMock }) }),
+          }),
+        };
+      }
+      // parcels count query: 2 parcels not yet picked_up/lost/returned
+      return {
+        select: () => ({
+          eq: () => ({
+            not: () => Promise.resolve({ count: 2, error: null }),
+          }),
+        }),
+      };
+    });
+    const res = await PATCH(patchReq({ status: "archived" }), ctxFor("s1"));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("shipment_has_active_parcels");
+    expect(updateSingleMock).not.toHaveBeenCalled();
+  });
+
+  it("archives once every attached parcel is settled", async () => {
+    fromMock.mockImplementation((table: string) => {
+      if (table === "shipments") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({ data: { status: "pickup_closed" } }),
+            }),
+          }),
+          update: () => ({
+            eq: () => ({ select: () => ({ single: updateSingleMock }) }),
+          }),
+        };
+      }
+      return {
+        select: () => ({
+          eq: () => ({
+            not: () => Promise.resolve({ count: 0, error: null }),
+          }),
+        }),
+      };
+    });
+    updateSingleMock.mockResolvedValue({
+      data: { id: "s1", status: "archived" },
+      error: null,
+    });
+    const res = await PATCH(patchReq({ status: "archived" }), ctxFor("s1"));
+    expect(res.status).toBe(200);
+    expect((await res.json()).status).toBe("archived");
+  });
+
   it("PATCH with no fields returns no_fields", async () => {
     fromMock.mockImplementation(() => ({
       update: () => ({

@@ -1,9 +1,11 @@
 // /api/admin/shipping/parcels/[id]
 // GET   — full parcel + events + shipment (viewer+)
-// PATCH — status / weight / dims / notes / received_at / shipment_id via
-//         admin_patch_parcel RPC (editor+). The RPC sets actor GUCs so the
-//         DB-side parcel_events log stamps actor_role='admin' — passing
-//         p_actor_user_id: auth.user.id keeps that cross-app audit chain intact.
+// PATCH — status / weight / dims / notes / received_at via admin_patch_parcel
+//         RPC (editor+). The RPC sets actor GUCs so the DB-side parcel_events
+//         log stamps actor_role='admin' — passing p_actor_user_id keeps that
+//         cross-app audit chain intact. shipment_id is NOT patchable here —
+//         attachment goes through /shipments/[id]/attach so the eligibility
+//         guards can't be bypassed (SR-1); the RPC also rejects the key.
 // Ported from bia-roommate (Phase-3 slice 3a). Audited via writeAudit below —
 // admin_audit_log.entity_type is an open string now (see lib/admin/audit-log.ts),
 // so the parcel-PATCH deferral is gone.
@@ -34,7 +36,6 @@ const PatchParcelBody = z.object({
   dim_cm_h: z.number().nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
   received_at: z.string().nullable().optional(),
-  shipment_id: z.string().nullable().optional(),
 });
 
 export async function GET(_request: Request, ctx: RouteContext) {
@@ -120,9 +121,10 @@ export async function PATCH(request: Request, ctx: RouteContext) {
 
     const admin = createBiaServiceRoleClient();
 
-    // Block status regressions / leaving a terminal state (transition policy).
-    // The other admin_patch_parcel callers (advance-parcels, bulk-receive) only
-    // ever move parcels forward, so guarding this editor-facing PATCH is enough.
+    // Friendly fast path: block status regressions / leaving a terminal state
+    // before hitting the DB. The authoritative guard now lives INSIDE
+    // admin_patch_parcel (FOR UPDATE + policy re-check, migration
+    // 20260703000001) so a concurrent confirm can't be raced past this check.
     if (typeof patch.status === "string") {
       const { data: cur } = await admin
         .from("parcels")
@@ -157,6 +159,21 @@ export async function PATCH(request: Request, ctx: RouteContext) {
     });
 
     if (error) {
+      // The RPC re-checks the transition under a row lock (race backstop for
+      // the precheck above) and raises recognizable tokens — map to clean 4xx.
+      const msg = error.message ?? "";
+      if (msg.includes("parcel_terminal") || msg.includes("invalid_transition")) {
+        return NextResponse.json(
+          { error: "invalid_transition", detail: msg },
+          { status: 409 },
+        );
+      }
+      if (msg.includes("shipment_id_not_patchable")) {
+        return NextResponse.json(
+          { error: "shipment_id_not_patchable" },
+          { status: 400 },
+        );
+      }
       return NextResponse.json(
         { error: "update_failed", details: error.message },
         { status: 500 },

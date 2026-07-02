@@ -46,6 +46,8 @@ export default function BulkIntakePage() {
   const [receiving, setReceiving] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Parcels whose last receive attempt failed — kept in the list for retry.
+  const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
 
   const doMatch = async () => {
     const codes = raw
@@ -121,18 +123,28 @@ export default function BulkIntakePage() {
         updated?: number;
         skipped?: number;
         failed?: number;
+        updated_ids?: string[];
+        skipped_ids?: string[];
+        failed_ids?: string[];
       };
       if (!res.ok) {
         setError(data.error ?? "入库失败");
         return;
       }
+      const failedNow = new Set(data.failed_ids ?? []);
       setResult(
-        `已入库 ${data.updated ?? 0}（跳过 ${data.skipped ?? 0} / 失败 ${data.failed ?? 0}）`,
+        `已入库 ${data.updated ?? 0}（跳过 ${data.skipped ?? 0} / 失败 ${data.failed ?? 0}）` +
+          (failedNow.size > 0 ? " — 失败的行已保留，可直接重试" : ""),
       );
-      // Drop the received rows from the review list.
-      const done = new Set(items.map((i) => i.id));
+      // Drop received + skipped rows (skipped = no longer 「待入库」, nothing to
+      // retry); KEEP failed rows in the list, flagged and pre-selected.
+      const done = new Set([
+        ...(data.updated_ids ?? []),
+        ...(data.skipped_ids ?? []),
+      ]);
       setMatched((prev) => prev.filter((m) => !done.has(m.id)));
-      setSelected(new Set());
+      setFailedIds(failedNow);
+      setSelected(failedNow);
     } catch {
       setError("入库失败");
     } finally {
@@ -223,6 +235,11 @@ export default function BulkIntakePage() {
                     </TableCell>
                     <TableCell className="px-4 py-2 font-medium">
                       {m.member_id}
+                      {failedIds.has(m.id) && (
+                        <span className="ml-2 rounded bg-rose-100 px-1.5 py-0.5 text-xs font-normal text-rose-700">
+                          上次失败
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="max-w-[200px] truncate px-4 py-2">
                       {m.description}

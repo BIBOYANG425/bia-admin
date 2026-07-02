@@ -63,6 +63,15 @@ export async function POST(request: Request, ctx: RouteContext) {
       },
     );
     if (error) {
+      // The RPC re-checks the shipment under a row lock (race backstop for the
+      // precheck above, migration 20260703000001) — map its token to a clean
+      // 409 like the pack-request attach route does.
+      if ((error.message ?? "").includes("shipment_not_attachable")) {
+        return NextResponse.json(
+          { error: "shipment_not_attachable" },
+          { status: 409 },
+        );
+      }
       return NextResponse.json(
         { error: "attach_failed", details: error.message },
         { status: 500 },

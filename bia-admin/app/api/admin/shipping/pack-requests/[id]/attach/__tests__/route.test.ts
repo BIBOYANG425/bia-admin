@@ -134,6 +134,7 @@ describe("POST /api/admin/shipping/pack-requests/[id]/attach", () => {
     expect(await res.json()).toEqual({
       attached: 2,
       skipped: 0,
+      approved: true,
       request: { id: "pr1", status: "approved", shipment_id: "s1" },
     });
     expect(rpcMock).toHaveBeenCalledWith("admin_attach_pack_request", {
@@ -143,17 +144,23 @@ describe("POST /api/admin/shipping/pack-requests/[id]/attach", () => {
     });
   });
 
-  it("reports parcels the RPC found ineligible (not received_cn) as skipped", async () => {
+  it("reports a partial attach as NOT approved — request stays attachable (SR-1)", async () => {
     setup({
       rpc: {
         total: 2,
         attached: 1,
-        request: { id: "pr1", status: "approved", shipment_id: "s1" },
+        approved: false,
+        // post-20260703000001 RPC keeps the request pending on a partial attach
+        request: { id: "pr1", status: "pending", shipment_id: "s1" },
       },
     });
     const res = await POST(req({ shipment_id: "s1" }), ctxFor("pr1"));
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ attached: 1, skipped: 1 });
+    expect(await res.json()).toMatchObject({
+      attached: 1,
+      skipped: 1,
+      approved: false,
+    });
   });
 
   it("409s when the target shipment is past forming/sealed (no RPC)", async () => {
