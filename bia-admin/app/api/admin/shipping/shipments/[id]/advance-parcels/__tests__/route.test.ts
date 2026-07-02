@@ -35,6 +35,7 @@ vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
   createBiaServiceRoleClient: () => ({ from: fromMock, rpc: rpcMock }),
 }));
 
+import { writeAudit } from "@/lib/admin/audit-log";
 import { POST } from "../route";
 
 const editor = {
@@ -131,6 +132,13 @@ describe("/api/admin/shipping/shipments/[id]/advance-parcels", () => {
       p_only_forward: true, // default
       p_actor_user_id: "admin-1",
     });
+    expect(vi.mocked(writeAudit)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "shipment.advance_parcels",
+        entity_id: "s1",
+        payload: expect.objectContaining({ updated: 2, skipped: 3 }),
+      }),
+    );
   });
 
   it("forwards only_forward:false to the RPC", async () => {

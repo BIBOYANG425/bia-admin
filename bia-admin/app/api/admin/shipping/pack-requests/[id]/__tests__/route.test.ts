@@ -35,6 +35,7 @@ vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
   createBiaServiceRoleClient: () => ({ from: fromMock }),
 }));
 
+import { writeAudit } from "@/lib/admin/audit-log";
 import { PATCH } from "../route";
 
 const editor = {
@@ -108,5 +109,8 @@ describe("PATCH /api/admin/shipping/pack-requests/[id]", () => {
       status: "contacted",
       admin_note: null, // "" -> null
     });
+    expect(vi.mocked(writeAudit)).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "pack_request.update", entity_id: "pr1" }),
+    );
   });
 });

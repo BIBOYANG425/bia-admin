@@ -41,6 +41,7 @@ vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
   createBiaServiceRoleClient: () => ({ from: fromMock }),
 }));
 
+import { writeAudit } from "@/lib/admin/audit-log";
 import { GET, PATCH } from "../route";
 
 const editor = {
@@ -148,6 +149,9 @@ describe("/api/admin/shipping/shipments/[id]", () => {
       carrier: null, // "" -> null
       international_tracking: "SF123",
     });
+    expect(vi.mocked(writeAudit)).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "shipment.update", entity_id: "s1" }),
+    );
   });
 
   it("409s on an invalid status transition (leaving a terminal state)", async () => {

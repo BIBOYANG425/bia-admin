@@ -117,6 +117,7 @@ export async function POST(request: Request, ctx: RouteContext) {
     const r = (result ?? {}) as {
       total?: number;
       attached?: number;
+      approved?: boolean;
       request?: unknown;
     };
     if ((r.total ?? 0) === 0) {
@@ -130,7 +131,13 @@ export async function POST(request: Request, ctx: RouteContext) {
     const attachedCount = r.attached ?? 0;
     const total = r.total ?? 0;
     const skipped = total - attachedCount;
-    const approved = total > 0 && attachedCount === total;
+    // The RPC's approved flag is authoritative (a re-run after a partial
+    // attach approves even though it only moved the stragglers, migration
+    // 20260703000006); the count comparison is the pre-apply fallback.
+    const approved =
+      typeof r.approved === "boolean"
+        ? r.approved
+        : total > 0 && attachedCount === total;
     await writeAudit({
       admin_email: auth.user.email,
       action: "pack_request.attach",
