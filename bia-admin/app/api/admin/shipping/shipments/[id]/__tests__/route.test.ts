@@ -31,6 +31,12 @@ vi.mock("@/lib/auth/require-role", () => ({
 
 vi.mock("@/lib/admin/audit-log", () => ({ writeAudit: vi.fn() }));
 
+const { enqueueMock } = vi.hoisted(() => ({ enqueueMock: vi.fn() }));
+vi.mock("@/lib/shipping/notify", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/shipping/notify")>();
+  return { ...actual, enqueueShippingNotifications: enqueueMock };
+});
+
 vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
   createBiaServiceRoleClient: () => ({ from: fromMock }),
 }));
@@ -81,6 +87,7 @@ describe("/api/admin/shipping/shipments/[id]", () => {
     requireRoleMock.mockReset();
     fromMock.mockReset();
     updateSingleMock.mockReset();
+    enqueueMock.mockReset();
     requireRoleMock.mockResolvedValue(editor);
   });
 
@@ -219,6 +226,66 @@ describe("/api/admin/shipping/shipments/[id]", () => {
     const res = await PATCH(patchReq({ status: "archived" }), ctxFor("s1"));
     expect(res.status).toBe(200);
     expect((await res.json()).status).toBe("archived");
+  });
+
+  it("pickup_open enqueues window-keyed rows and refreshes pending ones (SR-6)", async () => {
+    const ENDS = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+    const STARTS = new Date().toISOString();
+    fromMock.mockImplementation((table: string) => {
+      if (table === "shipments") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({ data: { status: "arrived_us" } }),
+            }),
+          }),
+          update: () => ({
+            eq: () => ({ select: () => ({ single: updateSingleMock }) }),
+          }),
+        };
+      }
+      // parcels query for the enqueue block
+      return {
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              not: () =>
+                Promise.resolve({
+                  data: [{ id: "p1", student_id: "st-1", member_id: "M001" }],
+                }),
+            }),
+          }),
+        }),
+      };
+    });
+    updateSingleMock.mockResolvedValue({
+      data: {
+        id: "s1",
+        status: "pickup_open",
+        pickup_location: "TCC 350",
+        pickup_starts_at: STARTS,
+        pickup_ends_at: ENDS,
+      },
+      error: null,
+    });
+
+    const res = await PATCH(patchReq({ status: "pickup_open" }), ctxFor("s1"));
+    expect(res.status).toBe(200);
+    expect(enqueueMock).toHaveBeenCalledTimes(1);
+    const [, rows, opts] = enqueueMock.mock.calls[0];
+    expect(opts).toEqual({ refreshPending: true });
+    const epoch = Math.floor(new Date(STARTS).getTime() / 1000);
+    expect(rows).toEqual([
+      expect.objectContaining({
+        kind: "pickup_open",
+        dedup_key: `p1:pickup_open:s1:${epoch}`,
+      }),
+      expect.objectContaining({
+        kind: "pickup_reminder",
+        dedup_key: `p1:pickup_reminder:s1:${epoch}`,
+      }),
+    ]);
   });
 
   it("PATCH with no fields returns no_fields", async () => {

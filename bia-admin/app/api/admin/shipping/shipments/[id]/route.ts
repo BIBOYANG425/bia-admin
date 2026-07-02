@@ -15,6 +15,7 @@ import {
 } from "@/lib/shipping/transitions";
 import {
   enqueueShippingNotifications,
+  pickupWindowKey,
   type ShippingNotificationRow,
 } from "@/lib/shipping/notify";
 
@@ -166,10 +167,14 @@ export async function PATCH(request: Request, ctx: RouteContext) {
       );
     }
 
-    // When pickup opens, enqueue pickup_open (+ pickup_reminder) per attached,
-    // arrived parcel/student. App-layer (not a DB trigger) so a notification
-    // hiccup never aborts the officer's shipment update; idempotent via
-    // dedup_key. Nothing is sent here — the (gated) george consumer drains it.
+    // When pickup opens (or any edit lands while it's open), enqueue
+    // pickup_open (+ pickup_reminder) per attached, arrived parcel/student.
+    // App-layer (not a DB trigger) so a notification hiccup never aborts the
+    // officer's shipment update. Keys carry the window discriminator and
+    // refreshPending supersedes this batch's still-pending rows, so a
+    // reschedule updates the queued time/location instead of being silently
+    // deduped, and a reopened window notifies again (SR-6). Nothing is sent
+    // here — the (gated) george consumer drains the queue.
     if (data.status === "pickup_open" && data.pickup_location && data.pickup_ends_at) {
       const { data: parcels } = await admin
         .from("parcels")
@@ -199,7 +204,12 @@ export async function PATCH(request: Request, ctx: RouteContext) {
           student_id: p.student_id,
           parcel_id: p.id,
           kind: "pickup_open",
-          dedup_key: `${p.id}:pickup_open`,
+          dedup_key: pickupWindowKey(
+            p.id,
+            "pickup_open",
+            id,
+            data.pickup_starts_at,
+          ),
           payload,
           status: "pending",
           scheduled_for: nowIso,
@@ -209,14 +219,19 @@ export async function PATCH(request: Request, ctx: RouteContext) {
             student_id: p.student_id,
             parcel_id: p.id,
             kind: "pickup_reminder",
-            dedup_key: `${p.id}:pickup_reminder`,
+            dedup_key: pickupWindowKey(
+              p.id,
+              "pickup_reminder",
+              id,
+              data.pickup_starts_at,
+            ),
             payload,
             status: "pending",
             scheduled_for: reminderAt,
           });
         }
       }
-      await enqueueShippingNotifications(admin, rows);
+      await enqueueShippingNotifications(admin, rows, { refreshPending: true });
     }
 
     await writeAudit({
