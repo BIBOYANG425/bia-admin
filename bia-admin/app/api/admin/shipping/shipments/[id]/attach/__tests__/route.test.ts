@@ -131,4 +131,17 @@ describe("POST /api/admin/shipping/shipments/[id]/attach", () => {
     expect(res.status).toBe(500);
     expect((await res.json()).error).toBe("attach_failed");
   });
+
+  it("maps the RPC's in-txn shipment re-check to 409 (race backstop, SR-1)", async () => {
+    // Precheck saw 'forming' on a stale snapshot; the RPC's FOR UPDATE re-check
+    // sees the concurrent seal/depart and raises.
+    shipmentExists(true, "forming");
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: { message: "shipment_not_attachable: departed_cn" },
+    });
+    const res = await POST(req({ parcel_ids: ["p1"] }), ctxFor("s1"));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("shipment_not_attachable");
+  });
 });
