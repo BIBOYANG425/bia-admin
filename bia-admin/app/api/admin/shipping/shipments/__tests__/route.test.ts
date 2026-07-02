@@ -47,6 +47,7 @@ const editor = {
 function thenable(result: unknown) {
   const t: any = {
     order: () => t,
+    limit: () => t,
     eq: () => t,
     then: (resolve: (v: unknown) => void) => resolve(result),
   };

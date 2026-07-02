@@ -1,4 +1,4 @@
-import { createBiaServiceRoleClient } from "@biboyang425/bia-shared";
+import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 
 /**
  * Conventional `entity_type` values. Exported as a runtime list so the

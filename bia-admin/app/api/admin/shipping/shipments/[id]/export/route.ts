@@ -1,8 +1,9 @@
 // /api/admin/shipping/shipments/[id]/export
 // GET — stream a shipment's parcels as a CSV manifest / 取件清单 (viewer+).
-// Read-only: no mutation, no audit. Includes the payment-reconciliation columns
-// (live since migration 20260620000005) so the exported sheet doubles as the
-// collection sheet the roster is for.
+// Includes the payment-reconciliation columns (live since migration
+// 20260620000005) so the exported sheet doubles as the collection sheet the
+// roster is for. Exporting member payment data leaves the audit trail even
+// though it's read-only (SR-5).
 
 import { NextResponse } from "next/server";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
@@ -14,21 +15,24 @@ import {
   type ShippingMethod,
 } from "@biboyang425/bia-shared/shipping";
 import { withRole } from "@/lib/auth/require-role";
+import { writeAudit } from "@/lib/admin/audit-log";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
 // Escape one CSV cell: wrap in quotes, double internal quotes, and neutralize
-// spreadsheet formula-injection by prefixing a leading = + - @ with a quote.
+// spreadsheet formula-injection by prefixing a leading = + - @ with a quote —
+// including when hidden behind leading whitespace/control chars, which Excel
+// strips before evaluating (SR-8).
 function csvCell(value: unknown): string {
   let s = value === null || value === undefined ? "" : String(value);
-  if (/^[=+\-@]/.test(s)) s = `'${s}`;
+  if (/^[\s\u0000-\u001f]*[=+\-@]/.test(s)) s = `'${s}`;
   return `"${s.replace(/"/g, '""')}"`;
 }
 
 export async function GET(_request: Request, ctx: RouteContext) {
-  return withRole("viewer", async () => {
+  return withRole("viewer", async (auth) => {
     const { id } = await ctx.params;
     const admin = createBiaServiceRoleClient();
 
@@ -116,6 +120,14 @@ export async function GET(_request: Request, ctx: RouteContext) {
     const BOM = String.fromCharCode(0xfeff);
     const csv =
       BOM + [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n");
+
+    await writeAudit({
+      admin_email: auth.user.email,
+      action: "shipment.export",
+      entity_type: "shipment",
+      entity_id: id,
+      payload: { rows: rows.length },
+    });
 
     return new NextResponse(csv, {
       status: 200,

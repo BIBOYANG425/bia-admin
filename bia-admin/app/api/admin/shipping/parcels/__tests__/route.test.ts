@@ -148,36 +148,38 @@ describe("POST /api/admin/shipping/parcels", () => {
     expect(insertSingleMock).not.toHaveBeenCalled();
   });
 
-  it("creates an expected parcel without received_at", async () => {
-    let captured: Record<string, unknown> | null = null;
-    fromMock.mockImplementation(() => ({
+  // POST now writes two inserts: the parcel row + a seed parcel_events row
+  // (SR-5 — officer-created parcels otherwise start with an empty timeline).
+  function captureInserts() {
+    const captured: Record<string, Record<string, unknown>> = {};
+    fromMock.mockImplementation((table: string) => ({
       insert: (p: Record<string, unknown>) => {
-        captured = p;
+        captured[table] = p;
+        if (table === "parcel_events") return Promise.resolve({ error: null });
         return { select: () => ({ single: insertSingleMock }) };
       },
     }));
+    return captured;
+  }
+
+  it("creates an expected parcel without received_at", async () => {
+    const captured = captureInserts();
 
     const res = await POST(
       postReq({ member_id: "BIA-1", description: "衣服一箱" }),
     );
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ id: "new-1" });
-    expect(captured).toMatchObject({
+    expect(captured.parcels).toMatchObject({
       member_id: "BIA-1",
       description: "衣服一箱",
       status: "expected",
     });
-    expect(captured).not.toHaveProperty("received_at");
+    expect(captured.parcels).not.toHaveProperty("received_at");
   });
 
   it("stamps received_at when status is received_cn", async () => {
-    let captured: Record<string, unknown> | null = null;
-    fromMock.mockImplementation(() => ({
-      insert: (p: Record<string, unknown>) => {
-        captured = p;
-        return { select: () => ({ single: insertSingleMock }) };
-      },
-    }));
+    const captured = captureInserts();
 
     const res = await POST(
       postReq({
@@ -189,13 +191,27 @@ describe("POST /api/admin/shipping/parcels", () => {
       }),
     );
     expect(res.status).toBe(201);
-    expect(captured).toMatchObject({
+    expect(captured.parcels).toMatchObject({
       member_id: "BIA-2",
       status: "received_cn",
       tracking_cn: "SF123",
       weight_grams: 1500,
     });
-    expect(typeof captured!.received_at).toBe("string");
+    expect(typeof captured.parcels!.received_at).toBe("string");
+  });
+
+  it("seeds the timeline with a parcel_events row on create (SR-5)", async () => {
+    const captured = captureInserts();
+    const res = await POST(
+      postReq({ member_id: "BIA-1", description: "衣服一箱" }),
+    );
+    expect(res.status).toBe(201);
+    expect(captured.parcel_events).toMatchObject({
+      parcel_id: "new-1",
+      from_status: null,
+      to_status: "expected",
+      actor_role: "admin",
+    });
   });
 
   it("surfaces a DB insert error as create_failed", async () => {

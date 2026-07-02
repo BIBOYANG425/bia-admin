@@ -1,9 +1,7 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
-import {
-  createBiaServiceRoleClient,
-  roleAtLeast,
-} from "@biboyang425/bia-shared";
+import { roleAtLeast } from "@biboyang425/bia-shared";
+import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 
 import { Button } from "@/components/ui/button";
 import {

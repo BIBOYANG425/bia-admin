@@ -59,17 +59,32 @@ function patchReq(body: unknown) {
 }
 
 describe("/api/admin/shipping/contacts", () => {
+  let capturedPatch: Record<string, unknown> | null = null;
+
   beforeEach(() => {
     requireRoleMock.mockReset();
     fromMock.mockReset();
     updateSingleMock.mockReset();
+    capturedPatch = null;
     requireRoleMock.mockResolvedValue(editor);
     fromMock.mockImplementation(() => ({
-      select: () =>
-        thenable({ data: [{ id: "c1", type: "wechat_group" }], error: null }),
-      update: () => ({
-        eq: () => ({ select: () => ({ single: updateSingleMock }) }),
-      }),
+      // Serves BOTH the GET list (thenable) and the PATCH prior-read
+      // (select().eq().maybeSingle()) added for value-carrying audits (SR-5).
+      select: () => {
+        const t = thenable({
+          data: [{ id: "c1", type: "wechat_group" }],
+          error: null,
+        });
+        t.eq = () => ({
+          maybeSingle: () =>
+            Promise.resolve({ data: { id: "c1", value: "old" }, error: null }),
+        });
+        return t;
+      },
+      update: (p: Record<string, unknown>) => {
+        capturedPatch = p;
+        return { eq: () => ({ select: () => ({ single: updateSingleMock }) }) };
+      },
     }));
   });
 
@@ -79,10 +94,18 @@ describe("/api/admin/shipping/contacts", () => {
     expect(await res.json()).toEqual([{ id: "c1", type: "wechat_group" }]);
   });
 
-  it("PATCH requires an id", async () => {
+  it("PATCH requires an id (zod)", async () => {
     const res = await PATCH(patchReq({ value: "x" }));
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "id_required" });
+    expect((await res.json()).error).toBe("invalid_body");
+  });
+
+  it("PATCH rejects a non-URL qr_code_url (SR-8)", async () => {
+    const res = await PATCH(
+      patchReq({ id: "c1", qr_code_url: "javascript:alert(1)" }),
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("invalid_body");
   });
 
   it("PATCH with no updatable fields returns no_fields", async () => {
@@ -92,13 +115,6 @@ describe("/api/admin/shipping/contacts", () => {
   });
 
   it("PATCH forwards value/label_en/active/display_order with empty->null", async () => {
-    let captured: Record<string, unknown> | null = null;
-    fromMock.mockImplementation(() => ({
-      update: (p: Record<string, unknown>) => {
-        captured = p;
-        return { eq: () => ({ select: () => ({ single: updateSingleMock }) }) };
-      },
-    }));
     updateSingleMock.mockResolvedValue({ data: { id: "c1" }, error: null });
 
     const res = await PATCH(
@@ -111,11 +127,29 @@ describe("/api/admin/shipping/contacts", () => {
       }),
     );
     expect(res.status).toBe(200);
-    expect(captured).toMatchObject({
+    expect(capturedPatch).toMatchObject({
       value: "bia_wechat",
       label_en: null, // "" -> null
       active: false,
       display_order: 3,
     });
+  });
+
+  it("audits old→new values for the public-facing fields (SR-5)", async () => {
+    updateSingleMock.mockResolvedValue({
+      data: { id: "c1", value: "new_wechat" },
+      error: null,
+    });
+    const res = await PATCH(patchReq({ id: "c1", value: "new_wechat" }));
+    expect(res.status).toBe(200);
+    const { writeAudit } = await import("@/lib/admin/audit-log");
+    expect(vi.mocked(writeAudit)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "shipping_contact.update",
+        payload: expect.objectContaining({
+          changes: { value: { from: "old", to: "new_wechat" } },
+        }),
+      }),
+    );
   });
 });

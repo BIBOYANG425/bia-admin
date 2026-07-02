@@ -4,7 +4,7 @@ const { insertMock } = vi.hoisted(() => ({
   insertMock: vi.fn(),
 }));
 
-vi.mock("@biboyang425/bia-shared", () => ({
+vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
   createBiaServiceRoleClient: () => ({
     from: () => ({
       insert: insertMock,

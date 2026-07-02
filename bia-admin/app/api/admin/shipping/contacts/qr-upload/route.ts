@@ -10,7 +10,13 @@ import { withRole } from "@/lib/auth/require-role";
 import { writeAudit } from "@/lib/admin/audit-log";
 
 const MAX_BYTES = 2 * 1024 * 1024;
-const ALLOWED = new Set(["image/png", "image/jpeg", "image/webp"]);
+// Storage-key extension derives from the VALIDATED MIME type — never from the
+// client-controlled filename (SR-8).
+const ALLOWED: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+};
 
 export async function POST(request: Request) {
   return withRole("editor", async (auth) => {
@@ -22,12 +28,12 @@ export async function POST(request: Request) {
     if (file.size > MAX_BYTES) {
       return NextResponse.json({ error: "too_large" }, { status: 400 });
     }
-    if (!ALLOWED.has(file.type)) {
+    const ext = ALLOWED[file.type];
+    if (!ext) {
       return NextResponse.json({ error: "bad_type" }, { status: 400 });
     }
 
     const id = String(form?.get("id") ?? "contact").replace(/[^a-zA-Z0-9_-]/g, "");
-    const ext = file.name.split(".").pop()?.toLowerCase() || "png";
     const path = `qr-${id}-${Date.now()}.${ext}`;
 
     const admin = createBiaServiceRoleClient();

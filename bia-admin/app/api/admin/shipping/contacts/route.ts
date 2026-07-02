@@ -1,10 +1,11 @@
 // /api/admin/shipping/contacts
 // GET   — list all contacts incl. inactive (viewer+)
 // PATCH — update a contact by id (value, label, qr_code_url, active, order) (editor+)
-// Ported from bia-roommate /api/shipping/admin/contacts (Phase-3 slice 8):
-// requireAdmin -> withRole, createAdminSupabaseClient -> createBiaServiceRoleClient.
+// SR-8: zod-validated; qr_code_url must be a real URL (these render on
+// uscbia.com). SR-5: audit carries old→new values for the public-facing fields.
 
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { withRole } from "@/lib/auth/require-role";
 import { writeAudit } from "@/lib/admin/audit-log";
@@ -27,39 +28,54 @@ export async function GET() {
   });
 }
 
+const PatchContactBody = z.object({
+  id: z.string().trim().min(1),
+  value: z.string().trim().min(1).max(500).optional(),
+  label: z.string().trim().min(1).max(120).optional(),
+  label_en: z.string().max(120).nullable().optional(),
+  qr_code_url: z
+    .string()
+    .url()
+    .regex(/^https?:\/\//i, "http(s) URL required")
+    .max(1000)
+    .nullable()
+    .optional(),
+  active: z.boolean().optional(),
+  display_order: z.number().int().min(0).max(10000).optional(),
+});
+
 export async function PATCH(request: Request) {
   return withRole("editor", async (auth) => {
-    let body: Record<string, unknown>;
-    try {
-      body = (await request.json()) as Record<string, unknown>;
-    } catch {
-      return NextResponse.json({ error: "invalid_body" }, { status: 400 });
+    const json = await request.json().catch(() => null);
+    const parsed = PatchContactBody.safeParse(json);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "invalid_body", details: parsed.error.flatten() },
+        { status: 400 },
+      );
     }
-
-    const id = typeof body.id === "string" ? body.id : "";
-    if (!id) {
-      return NextResponse.json({ error: "id_required" }, { status: 400 });
-    }
+    const { id, ...fields } = parsed.data;
 
     const patch: Record<string, unknown> = {};
-    if (typeof body.value === "string") patch.value = body.value;
-    if (typeof body.label === "string") patch.label = body.label;
-    if (typeof body.label_en === "string" || body.label_en === null) {
-      patch.label_en = body.label_en || null;
+    for (const [key, value] of Object.entries(fields)) {
+      if (value === undefined) continue;
+      patch[key] = typeof value === "string" && value.trim() === "" ? null : value;
     }
-    if (typeof body.qr_code_url === "string" || body.qr_code_url === null) {
-      patch.qr_code_url = body.qr_code_url || null;
-    }
-    if (typeof body.active === "boolean") patch.active = body.active;
-    if (typeof body.display_order === "number") {
-      patch.display_order = body.display_order;
-    }
-
     if (Object.keys(patch).length === 0) {
       return NextResponse.json({ error: "no_fields" }, { status: 400 });
     }
 
     const admin = createBiaServiceRoleClient();
+
+    const { data: prior } = await admin
+      .from("shipping_contacts")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    if (!prior) {
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
+
     const { data, error } = await admin
       .from("shipping_contacts")
       .update(patch)
@@ -74,12 +90,19 @@ export async function PATCH(request: Request) {
       );
     }
 
+    const changes: Record<string, { from: unknown; to: unknown }> = {};
+    for (const key of Object.keys(patch)) {
+      changes[key] = {
+        from: (prior as Record<string, unknown>)[key],
+        to: (data as Record<string, unknown>)[key],
+      };
+    }
     await writeAudit({
       admin_email: auth.user.email,
       action: "shipping_contact.update",
       entity_type: "shipping_contact",
       entity_id: id,
-      payload: { fields: Object.keys(patch) },
+      payload: { id, changes },
     });
 
     return NextResponse.json(data);
