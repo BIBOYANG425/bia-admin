@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createBiaServiceRoleClient } from "@biboyang425/bia-shared";
+import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { createBiaServerClient } from "@biboyang425/bia-shared/next/supabase/server";
 
 export async function GET(request: Request) {

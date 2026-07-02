@@ -34,13 +34,10 @@ vi.mock("@biboyang425/bia-shared/next/supabase/server", () => ({
   }),
 }));
 
-vi.mock("@biboyang425/bia-shared", async (importActual) => {
-  const actual = await importActual<typeof import("@biboyang425/bia-shared")>();
-  return {
-    ...actual,
-    createBiaServiceRoleClient: () => ({ from: mockServiceFrom }),
-  };
-});
+// The factory moved to the server-only subpath (bia-shared 1.0.0) — mock it there.
+vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
+  createBiaServiceRoleClient: () => ({ from: mockServiceFrom }),
+}));
 
 function mockSelfRead(data: unknown, error: unknown = null) {
   mockServerFrom.mockReturnValue({

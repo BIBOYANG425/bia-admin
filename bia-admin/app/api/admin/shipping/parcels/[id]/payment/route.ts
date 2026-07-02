@@ -2,6 +2,9 @@
 // PATCH — record offline payment reconciliation on a parcel (editor+).
 // Plain parcels UPDATE (NOT admin_patch_parcel) — these are bookkeeping fields,
 // not a status transition, so they intentionally write NO parcel_events row.
+// This is the money trail, so the audit payload carries BOTH prior and new
+// values (SR-5): an undo no longer erases who/when/how without a durable
+// record, and an amount change is reconstructable as from→to.
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -32,8 +35,26 @@ export async function PATCH(request: Request, ctx: RouteContext) {
       );
     }
     const body = parsed.data;
-    const patch: Record<string, unknown> = {};
 
+    const admin = createBiaServiceRoleClient();
+
+    // Read the prior money state first — it goes into the audit payload.
+    const { data: prior, error: priorErr } = await admin
+      .from("parcels")
+      .select("id, amount_owed_cents, paid_at, paid_by_admin, paid_method, paid_note")
+      .eq("id", id)
+      .maybeSingle();
+    if (priorErr) {
+      return NextResponse.json(
+        { error: "lookup_failed", details: priorErr.message },
+        { status: 500 },
+      );
+    }
+    if (!prior) {
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
+
+    const patch: Record<string, unknown> = {};
     if (body.amount_owed_cents !== undefined)
       patch.amount_owed_cents = body.amount_owed_cents;
     if (body.paid_note !== undefined) patch.paid_note = body.paid_note;
@@ -48,6 +69,10 @@ export async function PATCH(request: Request, ctx: RouteContext) {
         patch.paid_at = null;
         patch.paid_by_admin = null;
         patch.paid_method = null;
+        // An un-mark clears the whole reconciliation record — a note about a
+        // payment that no longer exists would orphan on the unpaid parcel.
+        // The prior note survives in the audit payload below.
+        if (body.paid_note === undefined) patch.paid_note = null;
       }
     } else if (body.paid_method !== undefined) {
       patch.paid_method = body.paid_method;
@@ -57,7 +82,6 @@ export async function PATCH(request: Request, ctx: RouteContext) {
       return NextResponse.json({ error: "no_fields" }, { status: 400 });
     }
 
-    const admin = createBiaServiceRoleClient();
     const { data, error } = await admin
       .from("parcels")
       .update(patch)
@@ -78,9 +102,20 @@ export async function PATCH(request: Request, ctx: RouteContext) {
       entity_type: "parcel",
       entity_id: id,
       payload: {
-        amount_owed_cents: body.amount_owed_cents,
-        paid: body.paid,
-        paid_method: patch.paid_method,
+        prior: {
+          amount_owed_cents: prior.amount_owed_cents,
+          paid_at: prior.paid_at,
+          paid_by_admin: prior.paid_by_admin,
+          paid_method: prior.paid_method,
+          paid_note: prior.paid_note,
+        },
+        next: {
+          amount_owed_cents: data.amount_owed_cents,
+          paid_at: data.paid_at,
+          paid_by_admin: data.paid_by_admin,
+          paid_method: data.paid_method,
+          paid_note: data.paid_note,
+        },
       },
     });
 

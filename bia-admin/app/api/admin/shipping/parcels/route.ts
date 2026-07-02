@@ -38,8 +38,14 @@ export async function GET(request: Request) {
     const shipmentId = searchParams.get("shipment_id");
     const memberId = searchParams.get("member_id");
     const search = sanitizeSearchTerm(searchParams.get("search"));
-    const limit = Math.min(Number(searchParams.get("limit") ?? 50), 200);
-    const offset = Math.max(Number(searchParams.get("offset") ?? 0), 0);
+    // Validate pagination — NaN reaching PostgREST turns into a confusing 500.
+    const rawLimit = Number(searchParams.get("limit") ?? 50);
+    const rawOffset = Number(searchParams.get("offset") ?? 0);
+    if (!Number.isFinite(rawLimit) || !Number.isFinite(rawOffset)) {
+      return NextResponse.json({ error: "invalid_pagination" }, { status: 400 });
+    }
+    const limit = Math.min(Math.max(Math.floor(rawLimit), 1), 200);
+    const offset = Math.max(Math.floor(rawOffset), 0);
 
     if (status && !STATUS_SET.has(status)) {
       return NextResponse.json({ error: "invalid_status" }, { status: 400 });
@@ -116,6 +122,19 @@ export async function POST(request: Request) {
         { status: 500 },
       );
     }
+
+    // Seed the timeline: the status-change trigger only fires on UPDATE, so an
+    // officer-created parcel otherwise starts with an empty/misleading
+    // timeline (SR-5). Best-effort — creation already succeeded.
+    const { error: evErr } = await admin.from("parcel_events").insert({
+      parcel_id: data.id as string,
+      from_status: null,
+      to_status: status,
+      actor_user_id: auth.user.id,
+      actor_role: "admin",
+      note: "运营创建（walk-in / 代录）",
+    });
+    if (evErr) console.error("[parcel.create] parcel_events", evErr.message);
 
     await writeAudit({
       admin_email: auth.user.email,

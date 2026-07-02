@@ -18,10 +18,12 @@ export async function GET(request: Request) {
     }
 
     const admin = createBiaServiceRoleClient();
+    // Bounded fetch — never unbounded as history grows.
     let query = admin
       .from("shipment_requests")
       .select("*")
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(500);
     if (status) query = query.eq("status", status);
 
     const { data, error } = await query;

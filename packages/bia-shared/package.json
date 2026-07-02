@@ -1,6 +1,6 @@
 {
   "name": "@biboyang425/bia-shared",
-  "version": "0.6.1",
+  "version": "1.0.0",
   "private": false,
   "sideEffects": false,
   "description": "Types + Supabase client factories shared between bia-admin and uscbia.com",
@@ -46,7 +46,8 @@
     "@supabase/supabase-js": "^2.45.0",
     "isomorphic-dompurify": "^2.26.0",
     "jsdom": "^25.0.1",
-    "libphonenumber-js": "^1.13.7"
+    "libphonenumber-js": "^1.13.7",
+    "server-only": "^0.0.1"
   },
   "peerDependencies": {
     "next": "^16.0.0",

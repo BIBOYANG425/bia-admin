@@ -1,3 +1,9 @@
+// Build-time guard (SR-8): importing this module from any client-component
+// graph fails the Next build. The CLAUDE.md guardrail ("the service-role
+// client factory enforces this by living in a server-only export path") is
+// enforced HERE — do not re-export this from the root barrel.
+import "server-only";
+
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 let client: SupabaseClient | null = null;
