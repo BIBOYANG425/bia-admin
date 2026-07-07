@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
-import { withCollisionSuffix } from "@biboyang425/bia-shared/articles";
 import { writeAudit } from "@/lib/admin/audit-log";
+import { findAvailableSlug } from "@/lib/admin/slug";
 import { withRole } from "@/lib/auth/require-role";
 
 interface RouteContext {
@@ -34,30 +34,14 @@ export async function POST(_request: Request, ctx: RouteContext) {
       );
     }
 
-    const base = existing.slug;
-    const candidates = [
-      base,
-      ...Array.from({ length: 99 }, (_, i) => `${base}-${i + 2}`),
-    ];
-    const { data: clashes, error: slugError } = await admin
-      .from("articles")
-      .select("slug, status, id")
-      .in("slug", candidates);
-    if (slugError) {
+    const slugResult = await findAvailableSlug(admin, existing.slug, { excludeId: id });
+    if (slugResult.error) {
       return NextResponse.json(
-        { error: "slug_lookup_failed", details: slugError.message },
+        { error: "slug_lookup_failed", details: slugResult.error.message },
         { status: 500 },
       );
     }
-    const taken = new Set(
-      (clashes ?? [])
-        .filter(
-          (r: { id: string; status: string }) =>
-            r.id !== id && r.status !== "draft",
-        )
-        .map((r: { slug: string }) => r.slug),
-    );
-    const finalSlug = withCollisionSuffix(base, taken);
+    const finalSlug = slugResult.slug;
 
     const { data, error } = await admin
       .from("articles")

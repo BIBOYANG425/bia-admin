@@ -6,9 +6,9 @@ import {
   sanitizeArticleHtml,
   slugify,
   stripEmptyImages,
-  withCollisionSuffix,
 } from "@biboyang425/bia-shared/articles";
 import { writeAudit } from "@/lib/admin/audit-log";
+import { findAvailableSlug } from "@/lib/admin/slug";
 import { withRole } from "@/lib/auth/require-role";
 
 const CreateArticleBody = z.object({
@@ -18,32 +18,6 @@ const CreateArticleBody = z.object({
   tags: z.array(z.string().trim().min(1).max(40)).max(20).default([]),
   cover_image_url: z.string().url().nullable().optional(),
 });
-
-function slugCandidates(base: string): string[] {
-  return [base, ...Array.from({ length: 99 }, (_, index) => `${base}-${index + 2}`)];
-}
-
-async function availableSlug(base: string): Promise<
-  | { slug: string; error: null }
-  | { slug: null; error: { message?: string } }
-> {
-  const admin = createBiaServiceRoleClient();
-  const { data, error } = await admin
-    .from("articles")
-    .select("slug, status")
-    .in("slug", slugCandidates(base));
-
-  if (error) return { slug: null, error };
-
-  // Only non-draft slugs are unique-constrained. Drafts can share slugs,
-  // so they don't count as collisions when creating a new draft.
-  const taken = new Set(
-    (data ?? [])
-      .filter((row: { status: string }) => row.status !== "draft")
-      .map((row: { slug: string }) => row.slug),
-  );
-  return { slug: withCollisionSuffix(base, taken), error: null };
-}
 
 export async function POST(request: Request) {
   return withRole("editor", async (ctx) => {
@@ -67,15 +41,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const slugResult = await availableSlug(slugify(parsed.data.title));
+    const admin = createBiaServiceRoleClient();
+    const slugResult = await findAvailableSlug(admin, slugify(parsed.data.title));
     if (slugResult.error) {
       return NextResponse.json(
         { error: "slug_lookup_failed", details: slugResult.error.message },
         { status: 500 },
       );
     }
-
-    const admin = createBiaServiceRoleClient();
     const { data, error } = await admin
       .from("articles")
       .insert({
