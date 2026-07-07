@@ -2,7 +2,11 @@
 // The shipment status labels used to live inside the shipment detail page, so
 // every other surface (list, pickers) rendered raw English enum values (SR-7).
 
-import type { ShipmentStatus } from "@biboyang425/bia-shared/shipping";
+import type {
+  PackRequestStatus,
+  ShipmentRequestStatus,
+  ShipmentStatus,
+} from "@biboyang425/bia-shared/shipping";
 
 export const SHIPMENT_STATUS_LABELS: Record<ShipmentStatus, string> = {
   forming: "组建中",
@@ -18,6 +22,53 @@ export const SHIPMENT_STATUS_LABELS: Record<ShipmentStatus, string> = {
 export function shipmentStatusLabel(status: string): string {
   return SHIPMENT_STATUS_LABELS[status as ShipmentStatus] ?? status;
 }
+
+// ── Status → pill tone maps ──────────────────────────────────────────────
+// Colocated with the label maps. `StatusTone` is the tone vocabulary shared
+// with <StatusPill>; each tone name resolves to one exact Tailwind class string
+// in components/StatusPill.tsx. These maps preserve, byte-for-byte, the colors
+// the shipping list pages used to hand-roll in local STATUS_CLASS maps.
+
+export type StatusTone =
+  | "pending" // amber
+  | "neutral" // zinc-700
+  | "good" // emerald
+  | "bad" // rose
+  | "done" // slate
+  | "muted" // zinc-500
+  | "archived"; // zinc-600
+
+export const SHIPMENT_REQUEST_STATUS_TONES: Record<
+  ShipmentRequestStatus,
+  StatusTone
+> = {
+  pending: "pending",
+  contacted: "neutral",
+  scheduled: "good",
+  declined: "bad",
+  completed: "done",
+};
+
+export const PACK_REQUEST_STATUS_TONES: Record<PackRequestStatus, StatusTone> = {
+  pending: "pending",
+  contacted: "neutral",
+  approved: "good",
+  packed: "good",
+  shipped: "done",
+  declined: "bad",
+  cancelled: "muted",
+};
+
+export const SHIPMENT_STATUS_TONES: Record<ShipmentStatus, StatusTone> = {
+  forming: "pending",
+  sealed: "pending",
+  departed_cn: "pending",
+  customs: "pending",
+  arrived_us: "pending",
+  pickup_open: "pending",
+  pickup_closed: "good",
+  archived: "archived",
+};
 
 // Officer-facing copy for the machine error codes the shipping APIs return.
 // Codes without an entry fall back to the raw code (better than nothing, and

@@ -3,7 +3,7 @@
 // Admin shipment list + inline create form. Ported from bia-roommate
 // (Phase-3 slice 4), restyled to shadcn.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -11,51 +11,27 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
+import { StatusPill } from "@/components/StatusPill";
 import type { Shipment } from "@biboyang425/bia-shared/shipping";
-import { shipmentStatusLabel } from "@/lib/shipping/labels";
+import {
+  SHIPMENT_STATUS_TONES,
+  shipmentStatusLabel,
+} from "@/lib/shipping/labels";
 import { fmtDate } from "@/lib/format";
-
-function statusClass(status: string): string {
-  if (status === "archived") return "border-zinc-200 bg-zinc-100 text-zinc-600";
-  if (status === "pickup_closed")
-    return "border-emerald-200 bg-emerald-100 text-emerald-800";
-  return "border-amber-200 bg-amber-100 text-amber-800";
-}
+import { useAdminList } from "@/lib/hooks/use-admin-list";
 
 export default function AdminShipmentsPage() {
-  const [shipments, setShipments] = useState<Shipment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    data,
+    loading,
+    reload,
+  } = useAdminList<Shipment[]>("/api/admin/shipping/shipments");
+  const shipments = data ?? [];
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
   const [carrier, setCarrier] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
-
-  const load = async () => {
-    const res = await fetch("/api/admin/shipping/shipments", {
-      cache: "no-store",
-    });
-    if (res.ok) setShipments((await res.json()) as Shipment[]);
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/admin/shipping/shipments", {
-          cache: "no-store",
-        });
-        if (cancelled) return;
-        if (res.ok) setShipments((await res.json()) as Shipment[]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const createShipment = async () => {
     if (!name.trim()) return;
@@ -76,7 +52,7 @@ export default function AdminShipmentsPage() {
       setNotes("");
       setShowCreate(false);
       toast.success("已创建");
-      await load();
+      await reload();
     } catch {
       toast.error("创建失败");
     } finally {
@@ -155,11 +131,10 @@ export default function AdminShipmentsPage() {
                 <CardContent className="p-4">
                   <div className="mb-1 flex items-start justify-between gap-2">
                     <h3 className="font-medium">{s.name}</h3>
-                    <span
-                      className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium ${statusClass(s.status)}`}
-                    >
-                      {shipmentStatusLabel(s.status)}
-                    </span>
+                    <StatusPill
+                      tone={SHIPMENT_STATUS_TONES[s.status]}
+                      label={shipmentStatusLabel(s.status)}
+                    />
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {s.carrier ? `${s.carrier} · ` : ""}

@@ -3,11 +3,17 @@
 // Admin view of user-initiated pack requests (regular consolidation flow).
 // Ported from bia-roommate (Phase-3 slice 5), restyled to shadcn.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { useCanWrite } from "@/lib/auth/role-context";
-import { shipmentStatusLabel } from "@/lib/shipping/labels";
+import {
+  PACK_REQUEST_STATUS_TONES,
+  shipmentStatusLabel,
+} from "@/lib/shipping/labels";
+import { StatusPill } from "@/components/StatusPill";
+import { useAdminList } from "@/lib/hooks/use-admin-list";
+import { useDraftMap } from "@/lib/hooks/use-draft-map";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,83 +35,38 @@ type Draft = {
   shipment_id?: string | null;
 };
 
-const STATUS_CLASS: Record<PackRequestStatus, string> = {
-  pending: "border-amber-200 bg-amber-100 text-amber-800",
-  contacted: "border-zinc-200 bg-zinc-100 text-zinc-700",
-  approved: "border-emerald-200 bg-emerald-100 text-emerald-800",
-  packed: "border-emerald-200 bg-emerald-100 text-emerald-800",
-  shipped: "border-slate-300 bg-slate-200 text-slate-800",
-  declined: "border-rose-200 bg-rose-100 text-rose-800",
-  cancelled: "border-zinc-200 bg-zinc-100 text-zinc-500",
-};
-
 // Batches still accepting parcels — past departed_cn they're already moving.
 const OPEN_SHIPMENT_STATUSES = ["forming", "sealed"] as const;
 
 export default function AdminPackRequestsPage() {
   const canWrite = useCanWrite();
-  const [requests, setRequests] = useState<PackRequestWithParcels[]>([]);
-  const [shipments, setShipments] = useState<Shipment[]>([]);
+  const [filter, setFilter] = useState<PackRequestStatus | "">("");
+  const {
+    data: reqData,
+    loading,
+    reload: reloadRequests,
+  } = useAdminList<PackRequestWithParcels[]>(
+    `/api/admin/shipping/pack-requests${filter ? `?status=${filter}` : ""}`,
+  );
+  const { data: shipData, reload: reloadShipments } = useAdminList<Shipment[]>(
+    "/api/admin/shipping/shipments",
+  );
+  const requests = reqData ?? [];
+  const shipments = (shipData ?? []).filter((s) =>
+    OPEN_SHIPMENT_STATUSES.includes(
+      s.status as (typeof OPEN_SHIPMENT_STATUSES)[number],
+    ),
+  );
+  const reload = async () => {
+    await Promise.all([reloadRequests(), reloadShipments()]);
+  };
+
+  const { drafts, update: updateDraft, clear } = useDraftMap<Draft>();
   const [pickedShipment, setPickedShipment] = useState<Record<string, string>>(
     {},
   );
-  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-  const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [attachingId, setAttachingId] = useState<string | null>(null);
-  const [filter, setFilter] = useState<PackRequestStatus | "">("");
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const qs = filter ? `?status=${filter}` : "";
-        const [rRes, sRes] = await Promise.all([
-          fetch(`/api/admin/shipping/pack-requests${qs}`, { cache: "no-store" }),
-          fetch("/api/admin/shipping/shipments", { cache: "no-store" }),
-        ]);
-        if (cancelled) return;
-        if (rRes.ok) {
-          setRequests((await rRes.json()) as PackRequestWithParcels[]);
-        }
-        if (sRes.ok) {
-          const all = (await sRes.json()) as Shipment[];
-          setShipments(
-            all.filter((s) =>
-              OPEN_SHIPMENT_STATUSES.includes(
-                s.status as (typeof OPEN_SHIPMENT_STATUSES)[number],
-              ),
-            ),
-          );
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [filter]);
-
-  const reload = async () => {
-    const qs = filter ? `?status=${filter}` : "";
-    const [rRes, sRes] = await Promise.all([
-      fetch(`/api/admin/shipping/pack-requests${qs}`, { cache: "no-store" }),
-      fetch("/api/admin/shipping/shipments", { cache: "no-store" }),
-    ]);
-    if (rRes.ok) setRequests((await rRes.json()) as PackRequestWithParcels[]);
-    if (sRes.ok) {
-      const all = (await sRes.json()) as Shipment[];
-      setShipments(
-        all.filter((s) =>
-          OPEN_SHIPMENT_STATUSES.includes(
-            s.status as (typeof OPEN_SHIPMENT_STATUSES)[number],
-          ),
-        ),
-      );
-    }
-  };
 
   const attachToShipment = async (requestId: string) => {
     const shipmentId = pickedShipment[requestId];
@@ -153,10 +114,6 @@ export default function AdminPackRequestsPage() {
     }
   };
 
-  const updateDraft = (id: string, patch: Draft) => {
-    setDrafts((prev) => ({ ...prev, [id]: { ...(prev[id] ?? {}), ...patch } }));
-  };
-
   const save = async (id: string) => {
     const draft = drafts[id];
     if (!draft) return;
@@ -172,11 +129,7 @@ export default function AdminPackRequestsPage() {
         toast.error(err.error ?? "保存失败");
         return;
       }
-      setDrafts((prev) => {
-        const nextState = { ...prev };
-        delete nextState[id];
-        return nextState;
-      });
+      clear(id);
       toast.success("已保存");
       await reload();
     } catch {
@@ -242,11 +195,10 @@ export default function AdminPackRequestsPage() {
                         <strong>{r.parcels?.length ?? 0}</strong> 个包裹
                       </p>
                     </div>
-                    <span
-                      className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium ${STATUS_CLASS[r.status]}`}
-                    >
-                      {PACK_REQUEST_STATUS_LABELS[r.status]}
-                    </span>
+                    <StatusPill
+                      tone={PACK_REQUEST_STATUS_TONES[r.status]}
+                      label={PACK_REQUEST_STATUS_LABELS[r.status]}
+                    />
                   </div>
 
                   {r.parcels && r.parcels.length > 0 && (
