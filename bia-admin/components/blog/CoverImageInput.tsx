@@ -2,28 +2,15 @@
 
 import { useRef, useState } from "react";
 import { ImagePlus, Loader2, UploadCloud, X } from "lucide-react";
-import { createBiaBrowserClient } from "@biboyang425/bia-shared/supabase/browser";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-
-const COVER_BUCKET = "article-covers";
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
-const ALLOWED_MIME_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-];
-
-interface SignedUploadResponse {
-  path?: string;
-  token?: string;
-  publicUrl?: string;
-  error?: string;
-  message?: string;
-}
+import {
+  ARTICLE_IMAGE_ACCEPT,
+  uploadArticleImage,
+  validateImageFile,
+} from "@/lib/blog/upload-article-image";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -43,47 +30,19 @@ export function CoverImageInput({
   const [isDragOver, setIsDragOver] = useState(false);
 
   async function uploadCover(file: File) {
-    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
-      toast.error("Use a JPG, PNG, WEBP, or GIF cover image.");
-      return;
-    }
-
-    if (file.size > MAX_FILE_SIZE) {
-      toast.error("Cover image must be 5 MB or smaller.");
+    const check = validateImageFile(file);
+    if (!check.ok) {
+      toast.error(
+        check.reason === "mime"
+          ? "Use a JPG, PNG, WEBP, or GIF cover image."
+          : "Cover image must be 5 MB or smaller.",
+      );
       return;
     }
 
     setUploading(true);
     try {
-      const signRes = await fetch("/api/admin/articles/cover-upload", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ filename: file.name, mime: file.type }),
-      });
-      const signed = (await signRes.json().catch(() => ({}))) as SignedUploadResponse;
-
-      if (!signRes.ok) {
-        throw new Error(signed.error ?? signed.message ?? "cover_sign_failed");
-      }
-      if (!signed.path || !signed.token) {
-        throw new Error("cover_upload_metadata_missing");
-      }
-
-      const supa = createBiaBrowserClient();
-      const { error } = await supa.storage
-        .from(COVER_BUCKET)
-        .uploadToSignedUrl(signed.path, signed.token, file, {
-          contentType: file.type,
-        });
-
-      if (error) {
-        throw error;
-      }
-
-      const publicUrl =
-        signed.publicUrl ??
-        supa.storage.from(COVER_BUCKET).getPublicUrl(signed.path).data.publicUrl;
-
+      const publicUrl = await uploadArticleImage(file);
       onChange(publicUrl);
       toast.success("Cover image uploaded");
     } catch (error) {
@@ -158,7 +117,7 @@ export function CoverImageInput({
           ref={inputRef}
           id="cover-image"
           type="file"
-          accept={ALLOWED_MIME_TYPES.join(",")}
+          accept={ARTICLE_IMAGE_ACCEPT}
           onChange={handleFileChange}
           disabled={disabled || uploading}
           className="sr-only"

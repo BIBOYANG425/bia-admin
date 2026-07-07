@@ -2,7 +2,6 @@
 
 import { useMemo, useRef, useState } from "react";
 import { AlertTriangle, ImagePlus, Loader2 } from "lucide-react";
-import { createBiaBrowserClient } from "@biboyang425/bia-shared/supabase/browser";
 import {
   fillImageSrc,
   findMissingImages,
@@ -10,18 +9,11 @@ import {
 } from "@biboyang425/bia-shared/articles";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-
-const COVER_BUCKET = "article-covers";
-const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
-
-interface SignedUploadResponse {
-  path?: string;
-  token?: string;
-  publicUrl?: string;
-  error?: string;
-  message?: string;
-}
+import {
+  ARTICLE_IMAGE_ACCEPT,
+  uploadArticleImage,
+  validateImageFile,
+} from "@/lib/blog/upload-article-image";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -85,41 +77,14 @@ function Slot({
   const [uploading, setUploading] = useState(false);
 
   async function upload(file: File) {
-    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
-      toast.error("Use a JPG, PNG, WEBP, or GIF.");
-      return;
-    }
-    if (file.size > MAX_FILE_SIZE) {
-      toast.error("Max 5 MB.");
+    const check = validateImageFile(file);
+    if (!check.ok) {
+      toast.error(check.reason === "mime" ? "Use a JPG, PNG, WEBP, or GIF." : "Max 5 MB.");
       return;
     }
     setUploading(true);
     try {
-      const signRes = await fetch("/api/admin/articles/cover-upload", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ filename: file.name, mime: file.type }),
-      });
-      const signed = (await signRes.json().catch(() => ({}))) as SignedUploadResponse;
-      if (!signRes.ok) {
-        throw new Error(signed.error ?? signed.message ?? "sign_failed");
-      }
-      if (!signed.path || !signed.token) {
-        throw new Error("cover_upload_metadata_missing");
-      }
-
-      const supa = createBiaBrowserClient();
-      const { error } = await supa.storage
-        .from(COVER_BUCKET)
-        .uploadToSignedUrl(signed.path, signed.token, file, {
-          contentType: file.type,
-        });
-      if (error) throw error;
-
-      const publicUrl =
-        signed.publicUrl ??
-        supa.storage.from(COVER_BUCKET).getPublicUrl(signed.path).data.publicUrl;
-
+      const publicUrl = await uploadArticleImage(file);
       onUploaded(publicUrl);
       toast.success(`Image uploaded for slot ${emptyIndex + 1}`);
     } catch (error) {
@@ -139,7 +104,7 @@ function Slot({
       <input
         ref={inputRef}
         type="file"
-        accept={ALLOWED_MIME_TYPES.join(",")}
+        accept={ARTICLE_IMAGE_ACCEPT}
         className="sr-only"
         onChange={(event) => {
           const file = event.target.files?.[0];

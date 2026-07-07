@@ -12,24 +12,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { requireRole } from "@/lib/auth/require-role";
+import { StatusPill, type ArticleStatus } from "@/components/blog/status";
 
 export const dynamic = "force-dynamic";
-
-type ArticleStatus = "draft" | "in_review" | "published" | "unpublished";
-
-const STATUS_LABELS: Record<ArticleStatus, string> = {
-  draft: "Draft",
-  in_review: "In review",
-  published: "Published",
-  unpublished: "Unpublished",
-};
-
-const STATUS_STYLES: Record<ArticleStatus, string> = {
-  draft: "border-zinc-200 bg-zinc-100 text-zinc-700",
-  in_review: "border-amber-200 bg-amber-100 text-amber-800",
-  published: "border-emerald-200 bg-emerald-100 text-emerald-800",
-  unpublished: "border-slate-200 bg-slate-100 text-slate-700",
-};
 
 interface Revision {
   id: string;
@@ -141,11 +126,7 @@ export default async function ArticleHistoryPage({
                   <CardTitle className="text-base">
                     {revision.title}
                   </CardTitle>
-                  <span
-                    className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[revision.status]}`}
-                  >
-                    {STATUS_LABELS[revision.status]}
-                  </span>
+                  <StatusPill status={revision.status} />
                   {index === 0 && (
                     <span className="inline-flex items-center rounded-md border border-zinc-300 bg-zinc-50 px-2 py-0.5 text-xs font-medium text-zinc-600">
                       Latest
