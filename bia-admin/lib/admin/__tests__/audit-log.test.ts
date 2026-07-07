@@ -1,15 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const { insertMock } = vi.hoisted(() => ({
+const { insertMock, createClientMock } = vi.hoisted(() => ({
   insertMock: vi.fn(),
+  createClientMock: vi.fn(),
 }));
 
 vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
-  createBiaServiceRoleClient: () => ({
-    from: () => ({
-      insert: insertMock,
-    }),
-  }),
+  createBiaServiceRoleClient: createClientMock,
 }));
 
 import { writeAudit } from "../audit-log";
@@ -17,6 +14,11 @@ import { writeAudit } from "../audit-log";
 describe("writeAudit", () => {
   beforeEach(() => {
     insertMock.mockReset();
+    createClientMock.mockReturnValue({
+      from: () => ({
+        insert: insertMock,
+      }),
+    });
   });
 
   it("inserts admin_audit_log row fields", async () => {
@@ -59,6 +61,20 @@ describe("writeAudit", () => {
 
   it("does not throw when the insert returns an error", async () => {
     insertMock.mockResolvedValue({ data: null, error: { message: "boom" } });
+
+    await expect(
+      writeAudit({
+        admin_email: "bobby@uscbia.com",
+        action: "article.create",
+        entity_type: "article",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("does not throw when createBiaServiceRoleClient throws", async () => {
+    createClientMock.mockImplementation(() => {
+      throw new Error("client init failed");
+    });
 
     await expect(
       writeAudit({
