@@ -16,9 +16,6 @@ importers:
       '@biboyang425/bia-shared':
         specifier: workspace:*
         version: link:../packages/bia-shared
-      '@hookform/resolvers':
-        specifier: ^3.10.0
-        version: 3.10.0(react-hook-form@7.75.0(react@19.2.6))
       '@radix-ui/react-alert-dialog':
         specifier: ^1.1.15
         version: 1.1.15(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -70,9 +67,6 @@ importers:
       react-dom:
         specifier: 19.2.6
         version: 19.2.6(react@19.2.6)
-      react-hook-form:
-        specifier: ^7.75.0
-        version: 7.75.0(react@19.2.6)
       sonner:
         specifier: ^1.5.0
         version: 1.7.4(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -704,11 +698,6 @@ packages:
 
   '@floating-ui/utils@0.2.11':
     resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
-
-  '@hookform/resolvers@3.10.0':
-    resolution: {integrity: sha512-79Dv+3mDF7i+2ajj7SkypSKHhl1cbln1OGavqrsF7p6mbUv11xpqpacPsGDCTRvCSjEEIez2ef1NveSVL3b0Ag==}
-    peerDependencies:
-      react-hook-form: ^7.0.0
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -3073,12 +3062,6 @@ packages:
     peerDependencies:
       react: ^19.2.6
 
-  react-hook-form@7.75.0:
-    resolution: {integrity: sha512-Ovv94H+0p3sJ7B9B5QxPuCP1u8V/cHuVGyH55cSwodYDtoJwK+fqk3vjfIgSX59I2U/bU4z0nRJ9HMLpNiWEmw==}
-    engines: {node: '>=18.0.0'}
-    peerDependencies:
-      react: ^16.8.0 || ^17 || ^18 || ^19
-
   react-is@16.13.1:
     resolution: {integrity: sha512-24e6ynE2H+OKt4kqsOvNd8kBpV65zoxbA4BVsEOB3ARVWQki/DHzaUoC5KuON/BiccDaCCTZBuOcfZs70kR8bQ==}
 
@@ -4072,10 +4055,6 @@ snapshots:
       react-dom: 19.2.6(react@19.2.6)
 
   '@floating-ui/utils@0.2.11': {}
-
-  '@hookform/resolvers@3.10.0(react-hook-form@7.75.0(react@19.2.6))':
-    dependencies:
-      react-hook-form: 7.75.0(react@19.2.6)
 
   '@humanfs/core@0.19.2':
     dependencies:
@@ -6526,10 +6505,6 @@ snapshots:
     dependencies:
       react: 19.2.6
       scheduler: 0.27.0
-
-  react-hook-form@7.75.0(react@19.2.6):
-    dependencies:
-      react: 19.2.6
 
   react-is@16.13.1: {}
 
