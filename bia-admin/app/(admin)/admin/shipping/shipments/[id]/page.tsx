@@ -1,8 +1,17 @@
 "use client";
 
-// Admin shipment detail — edit fields, see attached parcels, run attach flow,
-// visualize batch progress, advance status. Ported from bia-roommate
-// (Phase-3 slice 4), restyled to shadcn.
+// Admin shipment detail — composition + data loading only. Loads the shipment,
+// its parcels and the unassigned received_cn pool, owns the shared `saving`
+// flag and the write actions (patch / bump / attach / detach) that flip it, and
+// composes the colocated feature components:
+//   ShipmentEditor    — 批次信息 editor (one draft object + generic diff).
+//   BulkAdvancePanel  — 批量推进 whole-batch advance.
+//   AttachPanel       — attach picker (received_cn pool).
+//   AttachedParcels   — attached-parcels table + per-row detach (SR-7).
+// Ported from bia-roommate (Phase-3 slice 4), restyled to shadcn; decomposed in
+// task-17 (was a ~749-line monolith with 11 parallel draft states).
+//
+// Header last reviewed: 2026-07-07
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
@@ -10,61 +19,21 @@ import Link from "next/link";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusProgress } from "@/components/shipping/StatusProgress";
 import { BatchProgress } from "@/components/shipping/BatchProgress";
-import { ParcelStatusPill } from "@/components/shipping/ParcelStatusPill";
 import { useCanWrite } from "@/lib/auth/role-context";
 import { SHIPMENT_STATUS_LABELS, errText } from "@/lib/shipping/labels";
 import {
-  PARCEL_BRANCH_STATUSES,
-  PARCEL_STATUS_META,
-  PARCEL_STEPS,
-  SHIPMENT_STATUS_VALUES,
-  SHIPPING_METHOD_META,
   SHIPMENT_STEPS,
   nextShipmentStatus,
   type Parcel,
-  type ParcelStatus,
   type Shipment,
-  type ShipmentStatus,
 } from "@biboyang425/bia-shared/shipping";
-
-// Forward happy-path bulk-advance targets: every step AFTER 'expected'
-// (received_cn → picked_up). A parcel is never bulk-created/regressed to
-// 'expected', so it isn't an advance target. Branch/terminal states
-// (lost/returned/disputed) are kept separate and require an explicit confirm
-// since they mass-mutate the whole batch off the happy path.
-const FORWARD_ADVANCE_TARGETS: ParcelStatus[] = PARCEL_STEPS.filter(
-  (s) => s !== "expected",
-);
-const BRANCH_TARGET_SET = new Set<ParcelStatus>(PARCEL_BRANCH_STATUSES);
-
-function toLocalInput(ts: string | null): string {
-  if (!ts) return "";
-  const d = new Date(ts);
-  const tz = d.getTimezoneOffset() * 60000;
-  return new Date(d.getTime() - tz).toISOString().slice(0, 16);
-}
-
-function fromLocalInput(v: string): string | null {
-  return v ? new Date(v).toISOString() : null;
-}
+import { ShipmentEditor } from "./ShipmentEditor";
+import { BulkAdvancePanel } from "./BulkAdvancePanel";
+import { AttachPanel } from "./AttachPanel";
+import { AttachedParcels } from "./AttachedParcels";
 
 export default function AdminShipmentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -75,28 +44,7 @@ export default function AdminShipmentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-
-  // Draft fields
-  const [draftName, setDraftName] = useState("");
-  const [draftStatus, setDraftStatus] = useState<ShipmentStatus>("forming");
-  const [draftCarrier, setDraftCarrier] = useState("");
-  const [draftTracking, setDraftTracking] = useState("");
-  const [draftDeparted, setDraftDeparted] = useState("");
-  const [draftArrived, setDraftArrived] = useState("");
-  const [draftLocation, setDraftLocation] = useState("");
-  const [draftStart, setDraftStart] = useState("");
-  const [draftEnd, setDraftEnd] = useState("");
-  const [draftPrice, setDraftPrice] = useState("");
-  const [draftNotes, setDraftNotes] = useState("");
-
-  // Attach flow
   const [showAttach, setShowAttach] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [attachSearch, setAttachSearch] = useState("");
-
-  // Bulk advance all parcels in this batch
-  const [bulkStatus, setBulkStatus] = useState<ParcelStatus | "">("");
-  const [bulkBusy, setBulkBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -118,21 +66,6 @@ export default function AdminShipmentDetailPage() {
       };
       setShipment(data.shipment);
       setParcels(data.parcels);
-      setDraftName(data.shipment.name);
-      setDraftStatus(data.shipment.status);
-      setDraftCarrier(data.shipment.carrier ?? "");
-      setDraftTracking(data.shipment.international_tracking ?? "");
-      setDraftDeparted(toLocalInput(data.shipment.departed_cn_at));
-      setDraftArrived(toLocalInput(data.shipment.arrived_us_at));
-      setDraftLocation(data.shipment.pickup_location ?? "");
-      setDraftStart(toLocalInput(data.shipment.pickup_starts_at));
-      setDraftEnd(toLocalInput(data.shipment.pickup_ends_at));
-      setDraftPrice(
-        data.shipment.price_per_kg_cents !== null
-          ? String(data.shipment.price_per_kg_cents)
-          : "",
-      );
-      setDraftNotes(data.shipment.notes ?? "");
 
       if (unassignedRes.ok) {
         const u = (await unassignedRes.json()) as { parcels: Parcel[] };
@@ -177,40 +110,6 @@ export default function AdminShipmentDetailPage() {
     }
   };
 
-  const saveAll = async () => {
-    if (!shipment) return;
-    const patch: Record<string, unknown> = {};
-    if (draftName !== shipment.name) patch.name = draftName;
-    if (draftStatus !== shipment.status) patch.status = draftStatus;
-    if (draftCarrier !== (shipment.carrier ?? "")) patch.carrier = draftCarrier;
-    if (draftTracking !== (shipment.international_tracking ?? ""))
-      patch.international_tracking = draftTracking;
-    if (fromLocalInput(draftDeparted) !== shipment.departed_cn_at)
-      patch.departed_cn_at = fromLocalInput(draftDeparted);
-    if (fromLocalInput(draftArrived) !== shipment.arrived_us_at)
-      patch.arrived_us_at = fromLocalInput(draftArrived);
-    if (draftLocation !== (shipment.pickup_location ?? ""))
-      patch.pickup_location = draftLocation;
-    if (fromLocalInput(draftStart) !== shipment.pickup_starts_at)
-      patch.pickup_starts_at = fromLocalInput(draftStart);
-    if (fromLocalInput(draftEnd) !== shipment.pickup_ends_at)
-      patch.pickup_ends_at = fromLocalInput(draftEnd);
-    const currentPrice =
-      shipment.price_per_kg_cents !== null
-        ? String(shipment.price_per_kg_cents)
-        : "";
-    if (draftPrice !== currentPrice) {
-      patch.price_per_kg_cents = draftPrice === "" ? null : Number(draftPrice);
-    }
-    if (draftNotes !== (shipment.notes ?? "")) patch.notes = draftNotes;
-
-    if (Object.keys(patch).length === 0) {
-      toast("没有改动");
-      return;
-    }
-    await patchShipment(patch);
-  };
-
   const bumpNext = async () => {
     if (!shipment) return;
     const next = nextShipmentStatus(shipment.status);
@@ -218,39 +117,30 @@ export default function AdminShipmentDetailPage() {
     await patchShipment({ status: next });
   };
 
-  const toggleSelected = (pid: string) => {
-    setSelected((prev) => {
-      const nextSet = new Set(prev);
-      if (nextSet.has(pid)) nextSet.delete(pid);
-      else nextSet.add(pid);
-      return nextSet;
-    });
-  };
-
-  const attachSelected = async () => {
-    if (selected.size === 0) return;
+  const attachSelected = async (parcelIds: string[]): Promise<boolean> => {
+    if (parcelIds.length === 0) return false;
     setSaving(true);
     try {
       const res = await fetch(`/api/admin/shipping/shipments/${id}/attach`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ parcel_ids: Array.from(selected) }),
+        body: JSON.stringify({ parcel_ids: parcelIds }),
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
         toast.error(errText(err, "附加失败"));
-        return;
+        return false;
       }
       const data = (await res.json()) as { updated: number; skipped?: number };
       toast.success(
         `已附加 ${data.updated} 个` +
           (data.skipped ? `（跳过 ${data.skipped} 个：非「仓库签收」状态）` : ""),
       );
-      setSelected(new Set());
-      setShowAttach(false);
       await load();
+      return true;
     } catch {
       toast.error("附加失败，请检查网络后重试");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -294,46 +184,6 @@ export default function AdminShipmentDetailPage() {
     }
   };
 
-  const advanceParcels = async () => {
-    if (!bulkStatus || parcels.length === 0) return;
-    // Branch/terminal targets (lost/returned/disputed) mass-mutate the entire
-    // batch off the happy path — make the officer confirm explicitly.
-    if (BRANCH_TARGET_SET.has(bulkStatus)) {
-      const label = PARCEL_STATUS_META[bulkStatus].label;
-      if (
-        !window.confirm(
-          `确认把本批 ${parcels.length} 个包裹全部标记为「${label}」？这是分支/终态，会影响整批，且无法批量回退。`,
-        )
-      ) {
-        return;
-      }
-    }
-    setBulkBusy(true);
-    try {
-      const res = await fetch(
-        `/api/admin/shipping/shipments/${id}/advance-parcels`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: bulkStatus }),
-        },
-      );
-      if (!res.ok) {
-        const err = (await res.json().catch(() => ({}))) as { error?: string };
-        toast.error(errText(err, "批量推进失败"));
-        return;
-      }
-      const data = (await res.json()) as { updated: number; skipped: number };
-      toast.success(`已推进 ${data.updated} 个包裹（跳过 ${data.skipped}）`);
-      setBulkStatus("");
-      await load();
-    } catch {
-      toast.error("批量推进失败");
-    } finally {
-      setBulkBusy(false);
-    }
-  };
-
   if (loading) {
     return <p className="p-8 text-sm text-muted-foreground">加载中…</p>;
   }
@@ -341,15 +191,6 @@ export default function AdminShipmentDetailPage() {
     return <p className="p-8 text-sm text-rose-600">{error ?? "未找到"}</p>;
   }
 
-  const q = attachSearch.trim().toLowerCase();
-  const filteredUnassigned = q
-    ? unassigned.filter(
-        (p) =>
-          (p.member_id ?? "").toLowerCase().includes(q) ||
-          (p.description ?? "").toLowerCase().includes(q) ||
-          (p.tracking_cn ?? "").toLowerCase().includes(q),
-      )
-    : unassigned;
   // Detach is only meaningful while the batch is still at the warehouse.
   const canDetach =
     canWrite && (shipment.status === "forming" || shipment.status === "sealed");
@@ -396,128 +237,12 @@ export default function AdminShipmentDetailPage() {
       </div>
 
       {/* Editor */}
-      <Card>
-        <CardHeader className="p-4">
-          <CardTitle className="text-base">批次信息</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 p-4 pt-0">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1">
-              <Label htmlFor="name">名称</Label>
-              <Input
-                id="name"
-                value={draftName}
-                onChange={(e) => setDraftName(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="status">状态</Label>
-              <select
-                id="status"
-                value={draftStatus}
-                onChange={(e) =>
-                  setDraftStatus(e.target.value as ShipmentStatus)
-                }
-                className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-              >
-                {SHIPMENT_STATUS_VALUES.map((s) => (
-                  <option key={s} value={s}>
-                    {SHIPMENT_STATUS_LABELS[s]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="carrier">承运</Label>
-              <Input
-                id="carrier"
-                value={draftCarrier}
-                onChange={(e) => setDraftCarrier(e.target.value)}
-                placeholder="如 DHL"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="tracking">国际运单号</Label>
-              <Input
-                id="tracking"
-                value={draftTracking}
-                onChange={(e) => setDraftTracking(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="departed">国内发出时间</Label>
-              <Input
-                id="departed"
-                type="datetime-local"
-                value={draftDeparted}
-                onChange={(e) => setDraftDeparted(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="arrived">到美时间</Label>
-              <Input
-                id="arrived"
-                type="datetime-local"
-                value={draftArrived}
-                onChange={(e) => setDraftArrived(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="location">取件地点</Label>
-              <Input
-                id="location"
-                value={draftLocation}
-                onChange={(e) => setDraftLocation(e.target.value)}
-                placeholder="如 THH 301, USC"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="price">单价/kg (分)</Label>
-              <Input
-                id="price"
-                type="number"
-                value={draftPrice}
-                onChange={(e) => setDraftPrice(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="start">取件开始</Label>
-              <Input
-                id="start"
-                type="datetime-local"
-                value={draftStart}
-                onChange={(e) => setDraftStart(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="end">取件结束</Label>
-              <Input
-                id="end"
-                type="datetime-local"
-                value={draftEnd}
-                onChange={(e) => setDraftEnd(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1 sm:col-span-2">
-              <Label htmlFor="notes">备注</Label>
-              <textarea
-                id="notes"
-                value={draftNotes}
-                onChange={(e) => setDraftNotes(e.target.value)}
-                rows={2}
-                className="w-full resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm"
-              />
-            </div>
-          </div>
-          {canWrite ? (
-            <Button type="button" onClick={saveAll} disabled={saving}>
-              {saving ? "保存中…" : "保存所有修改"}
-            </Button>
-          ) : (
-            <p className="text-xs text-muted-foreground">只读：无法修改</p>
-          )}
-        </CardContent>
-      </Card>
+      <ShipmentEditor
+        shipment={shipment}
+        canWrite={canWrite}
+        saving={saving}
+        onSave={patchShipment}
+      />
 
       {/* Batch progress */}
       <Card>
@@ -533,51 +258,7 @@ export default function AdminShipmentDetailPage() {
 
       {/* Bulk-advance all parcels in this batch (one action → whole flight) */}
       {parcels.length > 0 && canWrite && (
-        <Card>
-          <CardHeader className="p-4">
-            <CardTitle className="text-base">批量推进包裹状态</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 p-4 pt-0">
-            <p className="text-xs text-muted-foreground">
-              一键把本批 {parcels.length} 个包裹沿正常流程推进到所选状态（只前进，
-              跳过已在该状态/已超前/分支状态的包裹）。分支/终态（丢失/退回/待核实）会影响整批，
-              需二次确认。审计照常记录；每个推进会给学生入队一条状态通知（通知功能开启后下发）。
-            </p>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <select
-                value={bulkStatus}
-                onChange={(e) =>
-                  setBulkStatus(e.target.value as ParcelStatus | "")
-                }
-                className="h-9 min-w-0 flex-1 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-              >
-                <option value="">选目标状态…</option>
-                <optgroup label="正常推进">
-                  {FORWARD_ADVANCE_TARGETS.map((s) => (
-                    <option key={s} value={s}>
-                      {PARCEL_STATUS_META[s].label}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="分支 / 终态（需确认）">
-                  {PARCEL_BRANCH_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {PARCEL_STATUS_META[s].label}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
-              <Button
-                type="button"
-                className="shrink-0"
-                onClick={advanceParcels}
-                disabled={!bulkStatus || bulkBusy}
-              >
-                {bulkBusy ? "推进中…" : "批量推进"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <BulkAdvancePanel shipmentId={id} parcels={parcels} onDone={load} />
       )}
 
       {/* Attached parcels + attach flow */}
@@ -606,142 +287,23 @@ export default function AdminShipmentDetailPage() {
         </div>
 
         {showAttach && (
-          <Card>
-            <CardContent className="space-y-3 p-4">
-              <p className="text-xs text-muted-foreground">
-                选择待关联的 received_cn 包裹 · 附加后自动推进到 in_transit（会给学生入队一条通知）
-              </p>
-              {unassigned.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  没有已签收但未关联批次的包裹
-                </p>
-              ) : (
-                <>
-                  <Input
-                    value={attachSearch}
-                    onChange={(e) => setAttachSearch(e.target.value)}
-                    placeholder="搜 Member ID / 描述 / 单号…"
-                    className="h-8"
-                  />
-                  {unassigned.length >= 200 && (
-                    <p className="text-xs text-amber-700">
-                      仅显示前 200 个待关联包裹 — 请用上面的搜索缩小范围。
-                    </p>
-                  )}
-                  <label className="flex cursor-pointer items-center gap-2 border-b px-2 py-1 text-xs font-medium hover:bg-muted">
-                    <input
-                      type="checkbox"
-                      checked={
-                        selected.size === filteredUnassigned.length &&
-                        filteredUnassigned.length > 0
-                      }
-                      onChange={(e) => {
-                        if (e.target.checked)
-                          setSelected(
-                            new Set(filteredUnassigned.map((p) => p.id)),
-                          );
-                        else setSelected(new Set());
-                      }}
-                    />
-                    全选（当前筛选） · 已选 {selected.size} /{" "}
-                    {filteredUnassigned.length}
-                  </label>
-                  <ul className="max-h-80 space-y-1 overflow-y-auto">
-                    {filteredUnassigned.map((p) => (
-                      <li key={p.id}>
-                        <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-xs hover:bg-muted">
-                          <input
-                            type="checkbox"
-                            checked={selected.has(p.id)}
-                            onChange={() => toggleSelected(p.id)}
-                          />
-                          <span className="font-medium">{p.member_id}</span>
-                          <span className="flex-1 truncate text-muted-foreground">
-                            {p.description}
-                          </span>
-                          {p.shipping_method && (
-                            <span className="text-muted-foreground">
-                              {SHIPPING_METHOD_META[p.shipping_method].icon}
-                            </span>
-                          )}
-                          {p.weight_grams && (
-                            <span className="text-muted-foreground">
-                              {(p.weight_grams / 1000).toFixed(1)}kg
-                            </span>
-                          )}
-                        </label>
-                      </li>
-                    ))}
-                  </ul>
-                  <Button
-                    type="button"
-                    onClick={attachSelected}
-                    disabled={selected.size === 0 || saving}
-                  >
-                    附加 {selected.size} 个包裹
-                  </Button>
-                </>
-              )}
-            </CardContent>
-          </Card>
+          <AttachPanel
+            unassigned={unassigned}
+            saving={saving}
+            onAttach={attachSelected}
+            onClose={() => setShowAttach(false)}
+          />
         )}
 
         {parcels.length === 0 ? (
           <p className="text-xs text-muted-foreground">这个批次还没有包裹</p>
         ) : (
-          <div className="rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="px-4">Member</TableHead>
-                  <TableHead className="px-4">Description</TableHead>
-                  <TableHead className="w-32 px-4">Status</TableHead>
-                  <TableHead className="w-24 px-4">重量</TableHead>
-                  {canDetach && <TableHead className="w-20 px-4"></TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {parcels.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="px-4 py-2">
-                      <Link
-                        href={`/admin/shipping/parcels/${p.id}`}
-                        className="font-medium hover:underline"
-                      >
-                        {p.member_id}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="max-w-[220px] truncate px-4 py-2">
-                      {p.description}
-                    </TableCell>
-                    <TableCell className="px-4 py-2">
-                      <ParcelStatusPill status={p.status} size="sm" />
-                    </TableCell>
-                    <TableCell className="px-4 py-2 text-xs text-muted-foreground">
-                      {p.weight_grams
-                        ? `${(p.weight_grams / 1000).toFixed(1)} kg`
-                        : "—"}
-                    </TableCell>
-                    {canDetach && (
-                      <TableCell className="px-4 py-2">
-                        {p.status === "in_transit" && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={saving}
-                            onClick={() => void detachParcel(p)}
-                          >
-                            移出
-                          </Button>
-                        )}
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          <AttachedParcels
+            parcels={parcels}
+            canDetach={canDetach}
+            saving={saving}
+            onDetach={detachParcel}
+          />
         )}
       </div>
     </div>
