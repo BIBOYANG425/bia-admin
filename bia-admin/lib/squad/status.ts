@@ -1,7 +1,7 @@
 // Squad moderation surface (WS6) — shared types + label/tone metadata.
 //
 // The Squad backend predates this UI; these shapes mirror the live schema as
-// defined by the squad migrations under bia-admin/supabase/migrations/:
+// defined by the squad migrations under the root supabase/migrations/:
 //   - squad_posts / squad_posts_with_status   (20260613000001, +phase3/phase4 cols)
 //   - squad_members                            (identity + rsvp, 20260615130000)
 //   - squad_pings                              (matching_tables 20260613000002, +phases)
