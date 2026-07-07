@@ -30,7 +30,7 @@ The admin dashboard at https://admin.uscbia.com plus the workspace home for `@bi
 - Phase 3: shipping operations (parcels, shipments, pack-requests, routes, contacts)
 - Phase 2: event submissions queue + sponsor management
 
-This is also the **source of truth for the Supabase schema**. All migrations live in `supabase/migrations/` and apply to the live Supabase project (`ujkaregrwrppaehvbahf`) via the Supabase MCP or the Supabase CLI. Edge functions live in `supabase/functions/` (deployed via the Supabase MCP).
+This is also the **source of truth for the Supabase schema**. All migrations live in `supabase/migrations/` and apply to the live Supabase project (`ujkaregrwrppaehvbahf`) via the Supabase MCP or the Supabase CLI. Edge functions live in `supabase/functions/` (deployed via the Supabase MCP). The historical DDL for the cross-repo shared tables (students, shipping, squad, sublets, events, user profiles, etc.) originated in bia-roommate and george and is archived for provenance in [`docs/schema-history/`](docs/schema-history/) — this repo is the single migrations owner going forward, with the live DB (the baseline) as the source-of-truth starting state; never re-apply the archived SQL.
 
 Local folder is named `BIA 新生service` for historical reasons. The GitHub repo is `bia-admin`. They are the same thing.
 
