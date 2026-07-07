@@ -75,6 +75,13 @@ function inviteAge(createdAt: string): string {
   return `${days} days ago`;
 }
 
+/** Human-readable label for each role in the "Set to…" menu. */
+const ROLE_LABELS: Record<Role, string> = {
+  viewer: "Set to viewer",
+  editor: "Set to editor",
+  super_admin: "Set to super admin",
+};
+
 export default function MembersClient({
   currentUserId,
   currentRole,
@@ -116,58 +123,62 @@ export default function MembersClient({
     }
   }
 
-  async function changeRole(id: string, role: Role) {
-    const res = await fetch(`/api/admin/members/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role }),
-    });
+  async function mutate(
+    path: string,
+    init: RequestInit,
+    okMsg: string,
+    errFallback = "request_failed"
+  ): Promise<void> {
+    const res = await fetch(path, init);
     const json = await res.json();
     if (!res.ok) {
-      toast.error(json.error ?? "update_failed");
+      toast.error(json.error ?? errFallback);
       return;
     }
-    toast.success("Role updated");
+    toast.success(okMsg);
     startTransition(() => router.refresh());
+  }
+
+  async function changeRole(id: string, role: Role) {
+    await mutate(
+      `/api/admin/members/${id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role }),
+      },
+      "Role updated",
+      "update_failed"
+    );
   }
 
   async function removeAdmin(id: string) {
-    const res = await fetch(`/api/admin/members/${id}`, { method: "DELETE" });
-    const json = await res.json();
-    if (!res.ok) {
-      toast.error(json.error ?? "delete_failed");
-      return;
-    }
-    toast.success("Admin removed");
-    startTransition(() => router.refresh());
+    await mutate(
+      `/api/admin/members/${id}`,
+      { method: "DELETE" },
+      "Admin removed",
+      "delete_failed"
+    );
   }
 
   async function revokeInvitation(id: string) {
-    const res = await fetch(`/api/admin/members/invitations/${id}`, {
-      method: "DELETE",
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      toast.error(json.error ?? "revoke_failed");
-      return;
-    }
-    toast.success("Invitation revoked");
-    startTransition(() => router.refresh());
+    await mutate(
+      `/api/admin/members/invitations/${id}`,
+      { method: "DELETE" },
+      "Invitation revoked",
+      "revoke_failed"
+    );
   }
 
   async function resendInvitation(id: string) {
     setResendingId(id);
     try {
-      const res = await fetch(`/api/admin/members/invitations/${id}`, {
-        method: "POST",
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        toast.error(json.error ?? "resend_failed");
-        return;
-      }
-      toast.success("Invitation re-sent");
-      startTransition(() => router.refresh());
+      await mutate(
+        `/api/admin/members/invitations/${id}`,
+        { method: "POST" },
+        "Invitation re-sent",
+        "resend_failed"
+      );
     } finally {
       setResendingId(null);
     }
@@ -281,31 +292,19 @@ export default function MembersClient({
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            disabled={
-                              a.id === currentUserId || a.role === "viewer"
-                            }
-                            onSelect={() => changeRole(a.id, "viewer")}
-                          >
-                            Set to viewer
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            disabled={
-                              a.id === currentUserId || a.role === "editor"
-                            }
-                            onSelect={() => changeRole(a.id, "editor")}
-                          >
-                            Set to editor
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            disabled={
-                              a.id === currentUserId ||
-                              a.role === "super_admin"
-                            }
-                            onSelect={() => changeRole(a.id, "super_admin")}
-                          >
-                            Set to super admin
-                          </DropdownMenuItem>
+                          {(
+                            ["viewer", "editor", "super_admin"] as Role[]
+                          ).map((role) => (
+                            <DropdownMenuItem
+                              key={role}
+                              disabled={
+                                a.id === currentUserId || a.role === role
+                              }
+                              onSelect={() => changeRole(a.id, role)}
+                            >
+                              {ROLE_LABELS[role]}
+                            </DropdownMenuItem>
+                          ))}
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <DropdownMenuItem
