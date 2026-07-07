@@ -1,5 +1,4 @@
 // /api/admin/events
-// GET  — list events (all statuses) + rsvp_count (viewer+).
 // POST — create a BIA-curated event (editor+).
 // events / event_attendance are george-owned; bia-admin reads/writes via
 // service-role (the admin app — service-role is correct here, unlike roommate).
@@ -23,48 +22,6 @@ const CreateBody = z
     source_url: z.string().max(1000).nullable().optional(),
   })
   .strip();
-
-export async function GET() {
-  return withRole("viewer", async () => {
-    const admin = createBiaServiceRoleClient();
-    const { data: events, error } = await admin
-      .from("events")
-      .select(
-        "id, title, date, end_date, location, category, source, status, capacity, created_at",
-      )
-      .order("date", { ascending: false, nullsFirst: false })
-      .limit(200);
-    if (error) {
-      return NextResponse.json(
-        { error: "list_failed", details: error.message },
-        { status: 500 },
-      );
-    }
-
-    const ids = (events ?? []).map((e) => e.id as string);
-    const counts = new Map<string, number>();
-    if (ids.length > 0) {
-      // Registered = RSVP'd OR checked in (check-in overwrites source
-      // rsvp→checkin, so counting only 'rsvp' undercounts). Matches the
-      // events list page.
-      const { data: att } = await admin
-        .from("event_attendance")
-        .select("event_id")
-        .in("source", ["rsvp", "checkin"])
-        .in("event_id", ids);
-      for (const a of att ?? []) {
-        const k = a.event_id as string;
-        counts.set(k, (counts.get(k) ?? 0) + 1);
-      }
-    }
-
-    const out = (events ?? []).map((e) => ({
-      ...e,
-      rsvp_count: counts.get(e.id as string) ?? 0,
-    }));
-    return NextResponse.json(out);
-  });
-}
 
 export async function POST(request: Request) {
   return withRole("editor", async (auth) => {

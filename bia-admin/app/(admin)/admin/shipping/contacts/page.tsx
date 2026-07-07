@@ -4,11 +4,13 @@
 // Ported from bia-roommate (Phase-3 slice 8), restyled to shadcn; QR upload now
 // goes through the admin-gated /qr-upload endpoint instead of a browser client.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import { toast } from "sonner";
 import { useCanWrite } from "@/lib/auth/role-context";
 import { errText } from "@/lib/shipping/labels";
+import { useAdminList } from "@/lib/hooks/use-admin-list";
+import { useDraftMap } from "@/lib/hooks/use-draft-map";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +21,7 @@ import type {
   ShippingContactType,
 } from "@biboyang425/bia-shared/shipping";
 
-type ContactDraft = Partial<ShippingContact> & { id: string };
+type ContactDraft = Partial<ShippingContact>;
 
 const CONTACT_TYPE_LABELS: Record<ShippingContactType, string> = {
   wechat_group: "微信群",
@@ -30,30 +32,13 @@ const CONTACT_TYPE_LABELS: Record<ShippingContactType, string> = {
 
 export default function AdminShippingContactsPage() {
   const canWrite = useCanWrite();
-  const [contacts, setContacts] = useState<ShippingContact[]>([]);
-  const [drafts, setDrafts] = useState<Record<string, ContactDraft>>({});
-  const [loading, setLoading] = useState(true);
+  const { data, loading, reload } = useAdminList<ShippingContact[]>(
+    "/api/admin/shipping/contacts",
+  );
+  const contacts = data ?? [];
+  const { drafts, update: updateDraft, clear } = useDraftMap<ContactDraft>();
   const [savingId, setSavingId] = useState<string | null>(null);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const res = await fetch("/api/admin/shipping/contacts", {
-          cache: "no-store",
-        });
-        if (cancelled) return;
-        if (res.ok) setContacts((await res.json()) as ShippingContact[]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const patchContact = async (id: string) => {
     const draft = drafts[id];
@@ -70,26 +55,14 @@ export default function AdminShippingContactsPage() {
         toast.error(errText(err, "保存失败"));
         return;
       }
-      const updated = (await res.json()) as ShippingContact;
-      setContacts((prev) => prev.map((c) => (c.id === id ? updated : c)));
-      setDrafts((prev) => {
-        const nextState = { ...prev };
-        delete nextState[id];
-        return nextState;
-      });
+      clear(id);
       toast.success("已保存");
+      await reload();
     } catch {
       toast.error("保存失败，请检查网络后重试");
     } finally {
       setSavingId(null);
     }
-  };
-
-  const updateDraft = (id: string, patch: Partial<ShippingContact>) => {
-    setDrafts((prev) => ({
-      ...prev,
-      [id]: { ...(prev[id] ?? { id }), ...patch },
-    }));
   };
 
   const uploadQr = async (id: string, file: File) => {

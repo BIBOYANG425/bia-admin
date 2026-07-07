@@ -4,10 +4,12 @@
 // immediately user-visible. `method` is not editable (retire via active=false).
 // Ported from bia-roommate (Phase-3 slice 7), restyled to shadcn.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { useCanWrite } from "@/lib/auth/role-context";
 import { errText } from "@/lib/shipping/labels";
+import { useAdminList } from "@/lib/hooks/use-admin-list";
+import { useDraftMap } from "@/lib/hooks/use-draft-map";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,42 +21,21 @@ import {
   type ShippingRoute,
 } from "@biboyang425/bia-shared/shipping";
 
-type RouteDraft = Partial<ShippingRoute> & { id: string };
+type RouteDraft = Partial<ShippingRoute>;
 
 export default function AdminShippingRoutesPage() {
   const canWrite = useCanWrite();
-  const [routes, setRoutes] = useState<ShippingRoute[]>([]);
-  const [drafts, setDrafts] = useState<Record<string, RouteDraft>>({});
-  const [loading, setLoading] = useState(true);
+  const { data, loading, reload } = useAdminList<ShippingRoute[]>(
+    "/api/admin/shipping/routes",
+  );
+  // Sort by method order (method is not editable, so this order is stable).
+  const routes = [...(data ?? [])].sort(
+    (a, b) =>
+      (SHIPPING_METHOD_ORDER[a.method] ?? 99) -
+      (SHIPPING_METHOD_ORDER[b.method] ?? 99),
+  );
+  const { drafts, update: updateDraft, clear } = useDraftMap<RouteDraft>();
   const [savingId, setSavingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const res = await fetch("/api/admin/shipping/routes", {
-          cache: "no-store",
-        });
-        if (cancelled) return;
-        if (res.ok) {
-          const data = (await res.json()) as ShippingRoute[];
-          setRoutes(
-            [...data].sort(
-              (a, b) =>
-                (SHIPPING_METHOD_ORDER[a.method] ?? 99) -
-                (SHIPPING_METHOD_ORDER[b.method] ?? 99),
-            ),
-          );
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const patchRoute = async (id: string) => {
     const draft = drafts[id];
@@ -71,26 +52,14 @@ export default function AdminShippingRoutesPage() {
         toast.error(errText(err, "保存失败"));
         return;
       }
-      const updated = (await res.json()) as ShippingRoute;
-      setRoutes((prev) => prev.map((r) => (r.id === id ? updated : r)));
-      setDrafts((prev) => {
-        const nextState = { ...prev };
-        delete nextState[id];
-        return nextState;
-      });
+      clear(id);
       toast.success("已保存");
+      await reload();
     } catch {
       toast.error("保存失败，请检查网络后重试");
     } finally {
       setSavingId(null);
     }
-  };
-
-  const updateDraft = (id: string, patch: Partial<ShippingRoute>) => {
-    setDrafts((prev) => ({
-      ...prev,
-      [id]: { ...(prev[id] ?? { id }), ...patch },
-    }));
   };
 
   const value = <K extends keyof ShippingRoute>(

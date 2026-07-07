@@ -20,13 +20,12 @@ export const SHIPPING_METHOD_ORDER: Record<ShippingMethod, number> = {
 
 export const SHIPPING_METHOD_META: Record<
   ShippingMethod,
-  { label: string; labelEn: string; icon: string }
+  { label: string; icon: string }
 > = {
-  sea: { label: "海运专线", labelEn: "Sea Freight", icon: "🚢" },
-  air: { label: "空运急件", labelEn: "Air Freight", icon: "✈️" },
+  sea: { label: "海运专线", icon: "🚢" },
+  air: { label: "空运急件", icon: "✈️" },
   sensitive: {
     label: "敏感货专线",
-    labelEn: "Sensitive Freight",
     icon: "⚡",
   },
 };
@@ -68,22 +67,6 @@ export const SHIPMENT_REQUEST_STATUS_LABELS: Record<
   declined: "已拒绝",
   completed: "已完成",
 };
-
-/** Public history entry for /api/shipping/history — one row per closed batch. */
-export interface ShipmentHistoryEntry {
-  id: string;
-  name: string;
-  status: ShipmentStatus;
-  departed_cn_at: string | null;
-  arrived_us_at: string | null;
-  carrier: string | null;
-  total_weight_grams: number;
-  parcel_count: number;
-  /** Rounded days between departed_cn_at and arrived_us_at, null if either is missing. */
-  transit_days: number | null;
-  /** Most-common shipping_method across the batch's parcels; null if none are tagged. */
-  dominant_method: ShippingMethod | null;
-}
 
 /* ── Pack Requests (user-initiated consolidation) ── */
 
@@ -198,27 +181,6 @@ export const SHIPMENT_STATUS_VALUES = [
 ] as const;
 export type ShipmentStatus = (typeof SHIPMENT_STATUS_VALUES)[number];
 
-export const PARCEL_CATEGORY_OPTIONS = [
-  "电子产品",
-  "服饰",
-  "食品",
-  "日用品",
-  "书籍",
-  "其它",
-] as const;
-export type ParcelCategory = (typeof PARCEL_CATEGORY_OPTIONS)[number];
-
-export const CN_CARRIER_OPTIONS = [
-  "顺丰",
-  "中通",
-  "圆通",
-  "韵达",
-  "申通",
-  "京东",
-  "EMS",
-  "其它",
-] as const;
-
 export interface Parcel {
   id: string;
   user_id: string | null;
@@ -280,20 +242,6 @@ export interface Shipment {
   notes: string | null;
   created_at: string;
   updated_at: string;
-}
-
-export interface WarehouseAddress {
-  id: string;
-  code: string;
-  display_name: string;
-  recipient_template: string;
-  street: string;
-  city: string;
-  province: string;
-  postal_code: string;
-  phone: string;
-  active: boolean;
-  notes: string | null;
 }
 
 /** Human-facing Chinese labels + styling intent per parcel status. */

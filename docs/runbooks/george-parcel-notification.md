@@ -22,10 +22,10 @@ Consumer code complete on george `main`; production deploy pending.
 > 4-kind function body (no lost/returned/disputed). Because it uses
 > `CREATE OR REPLACE FUNCTION`, applying it would silently downgrade the
 > live 7-kind producer back to 4 kinds. The producer's source of truth is
-> `bia-admin/supabase/migrations/` only.
+> this repo's root `supabase/migrations/` only.
 
 **Owners:**
-- Producer: lives in `bia-admin/supabase/migrations/`. Source of truth.
+- Producer: lives in this repo's root `supabase/migrations/`. Source of truth.
 - Consumer: lives in `BIBOYANG425/george` (Express + Node, Docker).
 
 ## What the producer does

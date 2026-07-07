@@ -6,10 +6,10 @@ import {
   sanitizeArticleHtml,
   slugify,
   stripEmptyImages,
-  withCollisionSuffix,
 } from "@biboyang425/bia-shared/articles";
 import { writeAudit } from "@/lib/admin/audit-log";
 import { removeArticleCoverByUrl } from "@/lib/admin/article-covers";
+import { findAvailableSlug } from "@/lib/admin/slug";
 import { withRole } from "@/lib/auth/require-role";
 
 interface RouteContext {
@@ -31,34 +31,6 @@ const PatchArticleBody = z.object({
     .nullable()
     .optional(),
 });
-
-function slugCandidates(base: string): string[] {
-  return [base, ...Array.from({ length: 99 }, (_, index) => `${base}-${index + 2}`)];
-}
-
-export async function GET(_request: Request, ctx: RouteContext) {
-  return withRole("viewer", async () => {
-    const { id } = await ctx.params;
-    const admin = createBiaServiceRoleClient();
-    const { data, error } = await admin
-      .from("articles")
-      .select("*")
-      .eq("id", id)
-      .maybeSingle();
-
-    if (error) {
-      return NextResponse.json(
-        { error: "lookup_failed", details: error.message },
-        { status: 500 },
-      );
-    }
-    if (!data) {
-      return NextResponse.json({ error: "not_found" }, { status: 404 });
-    }
-
-    return NextResponse.json(data);
-  });
-}
 
 export async function PATCH(request: Request, ctx: RouteContext) {
   return withRole("editor", async (auth) => {
@@ -98,24 +70,14 @@ export async function PATCH(request: Request, ctx: RouteContext) {
 
       if (existing.status === "draft" && parsed.data.title !== existing.title) {
         const base = slugify(parsed.data.title);
-        const { data: clashes, error: slugError } = await admin
-          .from("articles")
-          .select("id, slug")
-          .in("slug", slugCandidates(base));
-
-        if (slugError) {
+        const slugResult = await findAvailableSlug(admin, base, { excludeId: id });
+        if (slugResult.error) {
           return NextResponse.json(
-            { error: "slug_lookup_failed", details: slugError.message },
+            { error: "slug_lookup_failed", details: slugResult.error.message },
             { status: 500 },
           );
         }
-
-        const taken = new Set(
-          (clashes ?? [])
-            .filter((row: { id: string }) => row.id !== id)
-            .map((row: { slug: string }) => row.slug),
-        );
-        update.slug = withCollisionSuffix(base, taken);
+        update.slug = slugResult.slug;
       }
     }
 

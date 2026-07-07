@@ -36,7 +36,7 @@ vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
 // the helper directly to keep it a no-op in tests.
 vi.mock("@/lib/admin/audit-log", () => ({ writeAudit: vi.fn() }));
 
-import { GET, PATCH } from "../route";
+import { PATCH } from "../route";
 
 const editor = {
   user: { id: "e1", email: "editor@uscbia.com" },
@@ -59,51 +59,6 @@ beforeEach(() => {
   requireRoleMock.mockReset();
   fromMock.mockReset();
   requireRoleMock.mockResolvedValue(editor);
-});
-
-describe("GET /api/admin/events/[id]", () => {
-  it("404s when the event is missing", async () => {
-    fromMock.mockImplementation((table: string) =>
-      table === "events"
-        ? { select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }) }
-        : {},
-    );
-    const res = await GET(req("GET"), ctxFor("nope"));
-    expect(res.status).toBe(404);
-  });
-
-  it("returns the event + attendance roster", async () => {
-    fromMock.mockImplementation((table: string) => {
-      if (table === "events") {
-        return {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: () =>
-                Promise.resolve({ data: { id: "e1", title: "Mixer" }, error: null }),
-            }),
-          }),
-        };
-      }
-      return {
-        select: () => ({
-          eq: () => ({
-            order: () =>
-              Promise.resolve({
-                data: [
-                  { source: "rsvp", created_at: "2026-06-01T00:00:00Z", students: { id: "s", name: "A", member_id: "BIA-1" } },
-                ],
-                error: null,
-              }),
-          }),
-        }),
-      };
-    });
-    const res = await GET(req("GET"), ctxFor("e1"));
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.event.id).toBe("e1");
-    expect(body.attendance).toHaveLength(1);
-  });
 });
 
 describe("PATCH /api/admin/events/[id]", () => {

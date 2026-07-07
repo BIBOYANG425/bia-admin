@@ -1,6 +1,7 @@
 // /api/admin/events/[id]
-// GET   — event detail + attendance (rsvp/checkin list) (viewer+).
-// PATCH — edit event fields incl. status (editor+).
+// PATCH  — edit event fields incl. status (editor+).
+// DELETE — remove event + its attendance rows (super_admin+).
+// (Read/detail is now the server component at (admin)/admin/events/[id]/page.tsx.)
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -28,33 +29,6 @@ const PatchBody = z
     status: z.string().optional(),
   })
   .strip();
-
-export async function GET(_request: Request, ctx: RouteContext) {
-  return withRole("viewer", async () => {
-    const { id } = await ctx.params;
-    const admin = createBiaServiceRoleClient();
-    const { data: event, error } = await admin
-      .from("events")
-      .select("*")
-      .eq("id", id)
-      .maybeSingle();
-    if (error) {
-      return NextResponse.json(
-        { error: "lookup_failed", details: error.message },
-        { status: 500 },
-      );
-    }
-    if (!event) return NextResponse.json({ error: "not_found" }, { status: 404 });
-
-    const { data: attendance } = await admin
-      .from("event_attendance")
-      .select("source, created_at, students(id, name, member_id)")
-      .eq("event_id", id)
-      .order("created_at", { ascending: true });
-
-    return NextResponse.json({ event, attendance: attendance ?? [] });
-  });
-}
 
 export async function PATCH(request: Request, ctx: RouteContext) {
   return withRole("editor", async (auth) => {

@@ -77,7 +77,7 @@ vi.mock("@biboyang425/bia-shared/articles", () => ({
   stripEmptyImages: (html: string) => html,
 }));
 
-import { DELETE, GET, PATCH } from "../route";
+import { DELETE, PATCH } from "../route";
 
 const editor = {
   user: { id: "u1", email: "editor@uscbia.com" },
@@ -138,25 +138,6 @@ describe("/api/admin/articles/[id]", () => {
       (base: string, taken: Set<string>) => (taken.has(base) ? `${base}-2` : base),
     );
     deriveExcerptMock.mockReturnValue("Derived excerpt");
-  });
-
-  it("GET returns one article for viewer+", async () => {
-    maybeSingleMock.mockResolvedValue({
-      data: { id: "article-1", title: "Welcome", status: "draft" },
-      error: null,
-    });
-
-    const res = await GET(
-      new Request("http://localhost/api/admin/articles/article-1"),
-      ctxFor("article-1"),
-    );
-
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
-      id: "article-1",
-      title: "Welcome",
-      status: "draft",
-    });
   });
 
   it("PATCH rejects published edits from non-super-admins", async () => {

@@ -3,10 +3,13 @@
 // Admin list of shipment_requests — status + admin_note editor. Ported from
 // bia-roommate (Phase-3 slice 6), restyled to shadcn.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { useCanWrite } from "@/lib/auth/role-context";
-import { errText } from "@/lib/shipping/labels";
+import { errText, SHIPMENT_REQUEST_STATUS_TONES } from "@/lib/shipping/labels";
+import { StatusPill } from "@/components/StatusPill";
+import { useAdminList } from "@/lib/hooks/use-admin-list";
+import { useDraftMap } from "@/lib/hooks/use-draft-map";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,59 +22,22 @@ import {
   type ShipmentRequest,
   type ShipmentRequestStatus,
 } from "@biboyang425/bia-shared/shipping";
+import { fmtDate } from "@/lib/format";
 
 type Draft = {
   status?: ShipmentRequestStatus;
   admin_note?: string | null;
 };
 
-const STATUS_CLASS: Record<ShipmentRequestStatus, string> = {
-  pending: "border-amber-200 bg-amber-100 text-amber-800",
-  contacted: "border-zinc-200 bg-zinc-100 text-zinc-700",
-  scheduled: "border-emerald-200 bg-emerald-100 text-emerald-800",
-  declined: "border-rose-200 bg-rose-100 text-rose-800",
-  completed: "border-slate-300 bg-slate-200 text-slate-800",
-};
-
-function fmtDate(iso: string): string {
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(iso));
-}
-
 export default function AdminShipmentRequestsPage() {
   const canWrite = useCanWrite();
-  const [requests, setRequests] = useState<ShipmentRequest[]>([]);
-  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-  const [loading, setLoading] = useState(true);
-  const [savingId, setSavingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<ShipmentRequestStatus | "">("");
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const qs = filter ? `?status=${filter}` : "";
-        const res = await fetch(`/api/admin/shipping/requests${qs}`, {
-          cache: "no-store",
-        });
-        if (cancelled) return;
-        if (res.ok) setRequests((await res.json()) as ShipmentRequest[]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [filter]);
-
-  const updateDraft = (id: string, patch: Draft) => {
-    setDrafts((prev) => ({ ...prev, [id]: { ...(prev[id] ?? {}), ...patch } }));
-  };
+  const { data, loading, reload } = useAdminList<ShipmentRequest[]>(
+    `/api/admin/shipping/requests${filter ? `?status=${filter}` : ""}`,
+  );
+  const requests = data ?? [];
+  const { drafts, update: updateDraft, clear } = useDraftMap<Draft>();
+  const [savingId, setSavingId] = useState<string | null>(null);
 
   const save = async (id: string) => {
     const draft = drafts[id];
@@ -88,14 +54,9 @@ export default function AdminShipmentRequestsPage() {
         toast.error(errText(err, "保存失败"));
         return;
       }
-      const updated = (await res.json()) as ShipmentRequest;
-      setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)));
-      setDrafts((prev) => {
-        const nextState = { ...prev };
-        delete nextState[id];
-        return nextState;
-      });
+      clear(id);
       toast.success("已保存");
+      await reload();
     } catch {
       toast.error("保存失败，请检查网络后重试");
     } finally {
@@ -154,11 +115,10 @@ export default function AdminShipmentRequestsPage() {
                         {fmtDate(r.created_at)}
                       </p>
                     </div>
-                    <span
-                      className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium ${STATUS_CLASS[r.status]}`}
-                    >
-                      {SHIPMENT_REQUEST_STATUS_LABELS[r.status]}
-                    </span>
+                    <StatusPill
+                      tone={SHIPMENT_REQUEST_STATUS_TONES[r.status]}
+                      label={SHIPMENT_REQUEST_STATUS_LABELS[r.status]}
+                    />
                   </div>
 
                   <div className="space-y-2 text-sm">

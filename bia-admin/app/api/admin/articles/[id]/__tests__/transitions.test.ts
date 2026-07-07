@@ -252,31 +252,33 @@ describe("article transitions", () => {
     expect(res.status).toBe(200);
   });
 
-  it("publish bumps slug suffix when another published article owns the slug", async () => {
+  it("publish does not rewrite slug (DB partial unique index owns the guarantee)", async () => {
+    // The app-layer slug bump was removed from the publish route.
+    // The DB partial unique index (migration 20260524000003) covers
+    // in_review/published/unpublished — submit already bumped if needed.
     requireRoleMock.mockResolvedValue(superAdmin);
     maybeSingleMock.mockResolvedValue({
       data: { id: "article-1", status: "in_review", slug: "welcome" },
       error: null,
     });
-    slugLookupMock.mockResolvedValue({
-      data: [{ id: "article-9", slug: "welcome", status: "published" }],
-      error: null,
-    });
-    updateOk({ id: "article-1", status: "published", slug: "welcome-2" });
+    updateOk({ id: "article-1", status: "published", slug: "welcome" });
 
     const res = await publish(request(), ctx());
 
     expect(res.status).toBe(200);
     expect(updateMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        slug: "welcome-2",
         status: "published",
       }),
+    );
+    // slug must NOT be written by the publish update (no app-layer bump).
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.not.objectContaining({ slug: expect.anything() }),
     );
     expect(auditMock).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "article.publish",
-        payload: { slug: "welcome-2" },
+        payload: { slug: "welcome" },
       }),
     );
   });

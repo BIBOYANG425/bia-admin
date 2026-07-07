@@ -4,7 +4,11 @@
 // All writes go through PATCH /api/admin/shipping/parcels/[id], which uses the
 // admin_patch_parcel RPC so the event log tags actor_role='admin'. Ported from
 // bia-roommate (Phase-3 slice 3b-ii); weight/dims now sent as numbers (the
-// source sent strings, which mismatched the zod schema).
+// source sent strings, which mismatched the zod schema). Editor draft is one
+// object + a generic diff (parcel-draft.ts, task-17 Step 4); reassign / revert /
+// confirm-pickup stay inline.
+//
+// Header last reviewed: 2026-07-07
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
@@ -37,19 +41,17 @@ import {
   type ParcelStatus,
   type Shipment,
 } from "@biboyang425/bia-shared/shipping";
+import {
+  diffParcelEditDraft,
+  draftFromParcel,
+  type ParcelEditDraft,
+} from "./parcel-draft";
 
 interface DetailResponse {
   parcel: Parcel;
   events: ParcelEvent[];
   shipment: Shipment | null;
   photoUrls: string[];
-}
-
-function numOrNull(s: string): number | null {
-  const t = s.trim();
-  if (t === "") return null;
-  const n = Number(t);
-  return Number.isFinite(n) ? n : null;
 }
 
 function fmtTime(iso: string): string {
@@ -73,13 +75,19 @@ export default function AdminParcelDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Draft values
-  const [draftStatus, setDraftStatus] = useState<ParcelStatus | "">("");
-  const [draftWeight, setDraftWeight] = useState("");
-  const [draftL, setDraftL] = useState("");
-  const [draftW, setDraftW] = useState("");
-  const [draftH, setDraftH] = useState("");
-  const [draftNotes, setDraftNotes] = useState("");
+  // Draft values (one object; seeded from the loaded parcel).
+  const [draft, setDraft] = useState<ParcelEditDraft>({
+    status: "",
+    weight_grams: "",
+    dim_cm_l: "",
+    dim_cm_w: "",
+    dim_cm_h: "",
+    notes: "",
+  });
+  const setDraftField = <K extends keyof ParcelEditDraft>(
+    key: K,
+    value: ParcelEditDraft[K],
+  ) => setDraft((d) => ({ ...d, [key]: value }));
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
@@ -100,22 +108,7 @@ export default function AdminParcelDetailPage() {
       setEvents(data.events);
       setShipment(data.shipment);
       setPhotoUrls(data.photoUrls ?? []);
-      setDraftStatus(data.parcel.status);
-      setDraftWeight(
-        data.parcel.weight_grams !== null
-          ? String(data.parcel.weight_grams)
-          : "",
-      );
-      setDraftL(
-        data.parcel.dim_cm_l !== null ? String(data.parcel.dim_cm_l) : "",
-      );
-      setDraftW(
-        data.parcel.dim_cm_w !== null ? String(data.parcel.dim_cm_w) : "",
-      );
-      setDraftH(
-        data.parcel.dim_cm_h !== null ? String(data.parcel.dim_cm_h) : "",
-      );
-      setDraftNotes(data.parcel.notes ?? "");
+      setDraft(draftFromParcel(data.parcel));
       setError(null);
     } catch {
       setError("加载失败");
@@ -153,21 +146,10 @@ export default function AdminParcelDetailPage() {
 
   const handleSaveAll = async () => {
     if (!parcel) return;
-    const patch: Record<string, unknown> = {};
-    if (draftStatus && draftStatus !== parcel.status) patch.status = draftStatus;
-
-    const weight = numOrNull(draftWeight);
-    if (weight !== (parcel.weight_grams ?? null)) patch.weight_grams = weight;
-    const l = numOrNull(draftL);
-    if (l !== (parcel.dim_cm_l ?? null)) patch.dim_cm_l = l;
-    const w = numOrNull(draftW);
-    if (w !== (parcel.dim_cm_w ?? null)) patch.dim_cm_w = w;
-    const h = numOrNull(draftH);
-    if (h !== (parcel.dim_cm_h ?? null)) patch.dim_cm_h = h;
-    if (draftNotes !== (parcel.notes ?? "")) patch.notes = draftNotes;
+    const patch = diffParcelEditDraft(draft, parcel);
 
     // Flipping to received_cn with no received_at yet → stamp now.
-    if (draftStatus === "received_cn" && !parcel.received_at) {
+    if (draft.status === "received_cn" && !parcel.received_at) {
       patch.received_at = new Date().toISOString();
     }
 
@@ -468,8 +450,10 @@ export default function AdminParcelDetailPage() {
               <Label htmlFor="status">状态</Label>
               <select
                 id="status"
-                value={draftStatus}
-                onChange={(e) => setDraftStatus(e.target.value as ParcelStatus)}
+                value={draft.status}
+                onChange={(e) =>
+                  setDraftField("status", e.target.value as ParcelStatus)
+                }
                 className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
               >
                 {PARCEL_STATUS_VALUES.map((s) => (
@@ -484,8 +468,8 @@ export default function AdminParcelDetailPage() {
               <Input
                 id="weight"
                 type="number"
-                value={draftWeight}
-                onChange={(e) => setDraftWeight(e.target.value)}
+                value={draft.weight_grams}
+                onChange={(e) => setDraftField("weight_grams", e.target.value)}
               />
             </div>
             <div className="space-y-1">
@@ -494,8 +478,8 @@ export default function AdminParcelDetailPage() {
                 id="dimL"
                 type="number"
                 step="0.1"
-                value={draftL}
-                onChange={(e) => setDraftL(e.target.value)}
+                value={draft.dim_cm_l}
+                onChange={(e) => setDraftField("dim_cm_l", e.target.value)}
               />
             </div>
             <div className="space-y-1">
@@ -504,8 +488,8 @@ export default function AdminParcelDetailPage() {
                 id="dimW"
                 type="number"
                 step="0.1"
-                value={draftW}
-                onChange={(e) => setDraftW(e.target.value)}
+                value={draft.dim_cm_w}
+                onChange={(e) => setDraftField("dim_cm_w", e.target.value)}
               />
             </div>
             <div className="space-y-1">
@@ -514,16 +498,16 @@ export default function AdminParcelDetailPage() {
                 id="dimH"
                 type="number"
                 step="0.1"
-                value={draftH}
-                onChange={(e) => setDraftH(e.target.value)}
+                value={draft.dim_cm_h}
+                onChange={(e) => setDraftField("dim_cm_h", e.target.value)}
               />
             </div>
             <div className="space-y-1 sm:col-span-2">
               <Label htmlFor="notes">管理员备注</Label>
               <textarea
                 id="notes"
-                value={draftNotes}
-                onChange={(e) => setDraftNotes(e.target.value)}
+                value={draft.notes}
+                onChange={(e) => setDraftField("notes", e.target.value)}
                 rows={2}
                 placeholder="仓库备注 / 尺寸异常 / 处理记录"
                 className="w-full resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm"

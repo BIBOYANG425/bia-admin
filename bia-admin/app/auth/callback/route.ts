@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { createBiaServerClient } from "@biboyang425/bia-shared/next/supabase/server";
+import { writeAudit } from "@/lib/admin/audit-log";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -62,7 +63,7 @@ export async function GET(request: Request) {
   }
 
   // Audit (best-effort).
-  await admin.from("admin_audit_log").insert({
+  await writeAudit({
     admin_email: user.email,
     action: "accept_invitation",
     entity_type: "admin_user",
