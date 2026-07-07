@@ -65,9 +65,16 @@ export default async function AdminUsersPage({ searchParams }: PageProps) {
   const total = count ?? 0;
 
   // Join emails from auth.users — one lookup per unique user_id on this page.
+  // allSettled: a transient failure on one lookup degrades to one missing
+  // email ("—") instead of failing the whole page.
   const ids = Array.from(new Set(rows.map((s) => s.user_id).filter((v): v is string => !!v)));
-  const results = await Promise.all(ids.map((id) => admin.auth.admin.getUserById(id)));
-  const emails = new Map(ids.map((id, i) => [id, results[i].data.user?.email ?? null]));
+  const results = await Promise.allSettled(ids.map((id) => admin.auth.admin.getUserById(id)));
+  const emails = new Map(
+    ids.map((id, i) => {
+      const r = results[i];
+      return [id, r.status === "fulfilled" ? r.value.data.user?.email ?? null : null];
+    }),
+  );
 
   function pageHref(target: number): string {
     const qs = new URLSearchParams();
