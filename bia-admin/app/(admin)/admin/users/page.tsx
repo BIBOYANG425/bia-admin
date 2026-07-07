@@ -64,18 +64,10 @@ export default async function AdminUsersPage({ searchParams }: PageProps) {
   const rows = (data ?? []) as StudentRow[];
   const total = count ?? 0;
 
-  // Join emails from auth.users (first 200 — mirrors bia-roommate behavior).
-  const emails = new Map<string, string>();
-  const userIds = rows.map((r) => r.user_id).filter(Boolean) as string[];
-  if (userIds.length > 0) {
-    const { data: authList } = await admin.auth.admin.listUsers({
-      page: 1,
-      perPage: 200,
-    });
-    for (const u of authList?.users ?? []) {
-      if (u.email) emails.set(u.id, u.email);
-    }
-  }
+  // Join emails from auth.users — one lookup per unique user_id on this page.
+  const ids = Array.from(new Set(rows.map((s) => s.user_id).filter((v): v is string => !!v)));
+  const results = await Promise.all(ids.map((id) => admin.auth.admin.getUserById(id)));
+  const emails = new Map(ids.map((id, i) => [id, results[i].data.user?.email ?? null]));
 
   function pageHref(target: number): string {
     const qs = new URLSearchParams();
