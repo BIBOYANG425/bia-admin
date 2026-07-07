@@ -67,7 +67,7 @@ vi.mock("@biboyang425/bia-shared/articles", () => ({
   stripEmptyImages: (html: string) => html,
 }));
 
-import { GET, POST } from "../route";
+import { POST } from "../route";
 
 const auth = {
   user: { id: "u1", email: "editor@uscbia.com" },
@@ -199,33 +199,4 @@ describe("/api/admin/articles", () => {
     expect(res.status).toBe(401);
   });
 
-  it("GET lists articles with a supported status filter", async () => {
-    const query = thenableQuery({
-      data: [{ id: "article-1", status: "draft" }],
-      error: null,
-    });
-    serviceFromMock.mockReturnValue({
-      select: () => query,
-    });
-
-    const res = await GET(
-      new Request("http://localhost/api/admin/articles?status=draft"),
-    );
-
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
-      articles: [{ id: "article-1", status: "draft" }],
-    });
-    expect(query.eq).toHaveBeenCalledWith("status", "draft");
-  });
-
-  it("GET returns 400 for unsupported status filter", async () => {
-    const res = await GET(
-      new Request("http://localhost/api/admin/articles?status=archived"),
-    );
-
-    expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "invalid_status" });
-    expect(serviceFromMock).not.toHaveBeenCalled();
-  });
 });

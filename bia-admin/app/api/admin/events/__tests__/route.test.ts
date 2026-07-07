@@ -36,7 +36,7 @@ vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
 // the helper directly to keep it a no-op in tests.
 vi.mock("@/lib/admin/audit-log", () => ({ writeAudit: vi.fn() }));
 
-import { GET, POST } from "../route";
+import { POST } from "../route";
 
 const editor = {
   user: { id: "e1", email: "editor@uscbia.com" },
@@ -66,24 +66,6 @@ beforeEach(() => {
   requireRoleMock.mockReset();
   fromMock.mockReset();
   requireRoleMock.mockResolvedValue(editor);
-});
-
-describe("GET /api/admin/events", () => {
-  it("lists events with rsvp_count", async () => {
-    fromMock.mockImplementation((table: string) => ({
-      select: () =>
-        table === "events"
-          ? thenable({
-              data: [{ id: "e1", title: "Mixer", status: "active" }],
-              error: null,
-            })
-          : thenable({ data: [{ event_id: "e1" }, { event_id: "e1" }], error: null }),
-    }));
-    const res = await GET();
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body[0]).toMatchObject({ id: "e1", rsvp_count: 2 });
-  });
 });
 
 describe("POST /api/admin/events", () => {

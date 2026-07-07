@@ -36,30 +36,6 @@ function slugCandidates(base: string): string[] {
   return [base, ...Array.from({ length: 99 }, (_, index) => `${base}-${index + 2}`)];
 }
 
-export async function GET(_request: Request, ctx: RouteContext) {
-  return withRole("viewer", async () => {
-    const { id } = await ctx.params;
-    const admin = createBiaServiceRoleClient();
-    const { data, error } = await admin
-      .from("articles")
-      .select("*")
-      .eq("id", id)
-      .maybeSingle();
-
-    if (error) {
-      return NextResponse.json(
-        { error: "lookup_failed", details: error.message },
-        { status: 500 },
-      );
-    }
-    if (!data) {
-      return NextResponse.json({ error: "not_found" }, { status: 404 });
-    }
-
-    return NextResponse.json(data);
-  });
-}
-
 export async function PATCH(request: Request, ctx: RouteContext) {
   return withRole("editor", async (auth) => {
     const { id } = await ctx.params;

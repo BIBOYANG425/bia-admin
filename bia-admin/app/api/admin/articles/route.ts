@@ -11,13 +11,6 @@ import {
 import { writeAudit } from "@/lib/admin/audit-log";
 import { withRole } from "@/lib/auth/require-role";
 
-const ArticleStatus = z.enum([
-  "draft",
-  "in_review",
-  "published",
-  "unpublished",
-]);
-
 const CreateArticleBody = z.object({
   title: z.string().trim().min(1).max(200),
   html: z.string().min(1).max(200_000),
@@ -50,38 +43,6 @@ async function availableSlug(base: string): Promise<
       .map((row: { slug: string }) => row.slug),
   );
   return { slug: withCollisionSuffix(base, taken), error: null };
-}
-
-export async function GET(request: Request) {
-  return withRole("viewer", async () => {
-    const status = new URL(request.url).searchParams.get("status");
-    const parsedStatus = status ? ArticleStatus.safeParse(status) : null;
-    if (parsedStatus && !parsedStatus.success) {
-      return NextResponse.json({ error: "invalid_status" }, { status: 400 });
-    }
-
-    const admin = createBiaServiceRoleClient();
-    let query = admin
-      .from("articles")
-      .select(
-        "id, slug, title, excerpt, cover_image_url, language, tags, author_id, status, submitted_at, published_at, unpublished_at, created_at, updated_at",
-      )
-      .order("updated_at", { ascending: false });
-
-    if (parsedStatus?.success) {
-      query = query.eq("status", parsedStatus.data);
-    }
-
-    const { data, error } = await query;
-    if (error) {
-      return NextResponse.json(
-        { error: "list_failed", details: error.message },
-        { status: 500 },
-      );
-    }
-
-    return NextResponse.json({ articles: data ?? [] });
-  });
 }
 
 export async function POST(request: Request) {
