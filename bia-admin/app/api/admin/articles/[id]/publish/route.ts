@@ -1,7 +1,5 @@
-import { NextResponse } from "next/server";
-import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
-import { writeAudit } from "@/lib/admin/audit-log";
 import { withRole } from "@/lib/auth/require-role";
+import { runArticleTransition } from "@/lib/admin/article-transitions";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -10,63 +8,6 @@ interface RouteContext {
 export async function POST(_request: Request, ctx: RouteContext) {
   return withRole("super_admin", async (auth) => {
     const { id } = await ctx.params;
-    const admin = createBiaServiceRoleClient();
-    const { data: existing, error: lookupError } = await admin
-      .from("articles")
-      .select("id, status, slug")
-      .eq("id", id)
-      .maybeSingle();
-
-    if (lookupError) {
-      return NextResponse.json(
-        { error: "lookup_failed", details: lookupError.message },
-        { status: 500 },
-      );
-    }
-    if (!existing) {
-      return NextResponse.json({ error: "not_found" }, { status: 404 });
-    }
-    if (existing.status !== "in_review" && existing.status !== "unpublished") {
-      return NextResponse.json(
-        { error: "invalid_transition", from: existing.status },
-        { status: 409 },
-      );
-    }
-
-    // Slug uniqueness at publish time is owned by the DB partial unique index
-    // (migration 20260524000003); no app-layer bump needed here.
-
-    const { data, error } = await admin
-      .from("articles")
-      .update({
-        status: "published",
-        published_at: new Date().toISOString(),
-        published_by: auth.adminUser.id,
-        unpublished_at: null,
-        unpublished_by: null,
-        // Clear any pending schedule — a manual transition wins, and a stale
-        // scheduled_publish_at would let the cron re-publish after a takedown.
-        scheduled_publish_at: null,
-      })
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (error) {
-      return NextResponse.json(
-        { error: "publish_failed", details: error.message },
-        { status: 500 },
-      );
-    }
-
-    await writeAudit({
-      admin_email: auth.user.email,
-      action: "article.publish",
-      entity_type: "article",
-      entity_id: id,
-      payload: { slug: existing.slug },
-    });
-
-    return NextResponse.json(data);
+    return runArticleTransition("publish", id, auth);
   });
 }
