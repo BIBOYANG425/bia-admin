@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, XCircle } from "lucide-react";
 import { roleAtLeast, type Role } from "@biboyang425/bia-shared";
-import { ArticleRenderer } from "@biboyang425/bia-shared/articles";
+import { ArticleRenderer } from "@biboyang425/bia-shared/react";
 import { toast } from "sonner";
 
 import { Input } from "@/components/ui/input";

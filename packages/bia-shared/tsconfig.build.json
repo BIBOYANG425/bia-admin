@@ -1,5 +1,5 @@
 {
-  "//": "Emits the framework-agnostic ./phone entry as runnable CommonJS so Node consumers (e.g. george's tsc -> node dist) can load it. The source uses extensionless imports, so CJS is the only format Node can resolve without rewriting specifiers. Framework-coupled entries (next/*, articles .tsx) stay source-only for bundler consumers.",
+  "//": "Emits the framework-agnostic ./phone entry as runnable CommonJS so Node consumers (e.g. george's tsc -> node dist) can load it. The source uses extensionless imports, so CJS is the only format Node can resolve without rewriting specifiers. Framework-coupled entries (next/*, react/* .tsx) stay source-only for bundler consumers.",
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "module": "commonjs",
