@@ -22,6 +22,7 @@ import {
 import { ParcelStatusPill } from "@/components/shipping/ParcelStatusPill";
 import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeSearchTerm } from "@/lib/shipping/search-filter";
+import { fmtDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -37,13 +38,6 @@ interface PageProps {
   }>;
 }
 
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(value));
-}
 
 export default async function AdminParcelsPage({ searchParams }: PageProps) {
   const { role } = await requireRole("viewer");
@@ -231,7 +225,7 @@ export default async function AdminParcelsPage({ searchParams }: PageProps) {
                       : "—"}
                   </TableCell>
                   <TableCell className="px-4 py-3 text-xs text-muted-foreground">
-                    {formatDate(p.created_at)}
+                    {fmtDate(p.created_at)}
                   </TableCell>
                 </TableRow>
               ))

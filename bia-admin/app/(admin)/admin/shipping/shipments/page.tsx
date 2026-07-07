@@ -13,14 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import type { Shipment } from "@biboyang425/bia-shared/shipping";
 import { shipmentStatusLabel } from "@/lib/shipping/labels";
-
-function fmtDate(iso: string): string {
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(iso));
-}
+import { fmtDate } from "@/lib/format";
 
 function statusClass(status: string): string {
   if (status === "archived") return "border-zinc-200 bg-zinc-100 text-zinc-600";

@@ -19,6 +19,7 @@ import {
   type ShipmentRequest,
   type ShipmentRequestStatus,
 } from "@biboyang425/bia-shared/shipping";
+import { fmtDate } from "@/lib/format";
 
 type Draft = {
   status?: ShipmentRequestStatus;
@@ -32,14 +33,6 @@ const STATUS_CLASS: Record<ShipmentRequestStatus, string> = {
   declined: "border-rose-200 bg-rose-100 text-rose-800",
   completed: "border-slate-300 bg-slate-200 text-slate-800",
 };
-
-function fmtDate(iso: string): string {
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(iso));
-}
 
 export default function AdminShipmentRequestsPage() {
   const canWrite = useCanWrite();

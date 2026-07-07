@@ -21,6 +21,7 @@ import {
   type PackRequestWithParcels,
   type Shipment,
 } from "@biboyang425/bia-shared/shipping";
+import { fmtDate } from "@/lib/format";
 
 type Draft = {
   status?: PackRequestStatus;
@@ -40,14 +41,6 @@ const STATUS_CLASS: Record<PackRequestStatus, string> = {
 
 // Batches still accepting parcels — past departed_cn they're already moving.
 const OPEN_SHIPMENT_STATUSES = ["forming", "sealed"] as const;
-
-function fmtDate(iso: string): string {
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(iso));
-}
 
 export default function AdminPackRequestsPage() {
   const canWrite = useCanWrite();
