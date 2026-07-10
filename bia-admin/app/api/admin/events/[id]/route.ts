@@ -93,29 +93,19 @@ export async function DELETE(_request: Request, ctx: RouteContext) {
     const { id } = await ctx.params;
     const admin = createBiaServiceRoleClient();
 
-    // Delete the event first (atomic if event_attendance.event_id cascades).
-    // Only on a confirmed FK violation (23503 — a non-cascading FK) do we clean
-    // up attendance and retry, so a transient failure never silently wipes the
-    // roster while leaving the event intact.
-    let { error } = await admin.from("events").delete().eq("id", id);
-    if (error && error.code === "23503") {
-      await admin.from("event_attendance").delete().eq("event_id", id);
-      ({ error } = await admin.from("events").delete().eq("id", id));
-    }
+    const { data: deleted, error } = await admin.rpc(
+      "admin_delete_event_atomic",
+      { p_event_id: id, p_admin_email: auth.user.email },
+    );
     if (error) {
       return NextResponse.json(
         { error: "delete_failed", details: error.message },
         { status: 500 },
       );
     }
-
-    await writeAudit({
-      admin_email: auth.user.email,
-      action: "event.delete",
-      entity_type: "event",
-      entity_id: id,
-      payload: {},
-    });
+    if (!deleted) {
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
 
     return NextResponse.json({ ok: true });
   });

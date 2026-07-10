@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { withRole } from "@/lib/auth/require-role";
-import { writeAudit } from "@/lib/admin/audit-log";
 
 const PatchSchema = z.object({
   role: z.enum(["super_admin", "editor", "viewer"]),
@@ -29,21 +28,20 @@ export async function PATCH(request: Request, ctx: RouteContext) {
     }
 
     const admin = createBiaServiceRoleClient();
-    const { error } = await admin
-      .from("admin_users")
-      .update({ role: parsed.data.role })
-      .eq("id", id);
+    const { data: updated, error } = await admin.rpc(
+      "admin_update_member_role_atomic",
+      {
+        p_admin_user_id: id,
+        p_role: parsed.data.role,
+        p_admin_email: auth.user.email,
+      },
+    );
     if (error) {
       return NextResponse.json({ error: "update_failed" }, { status: 500 });
     }
-
-    await writeAudit({
-      admin_email: auth.user.email,
-      action: "role_changed",
-      entity_type: "admin_user",
-      entity_id: id,
-      payload: { role: parsed.data.role },
-    });
+    if (!updated) {
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
 
     return NextResponse.json({ ok: true });
   });
@@ -60,17 +58,16 @@ export async function DELETE(request: Request, ctx: RouteContext) {
     }
 
     const admin = createBiaServiceRoleClient();
-    const { error } = await admin.from("admin_users").delete().eq("id", id);
+    const { data: deleted, error } = await admin.rpc(
+      "admin_delete_member_atomic",
+      { p_admin_user_id: id, p_admin_email: auth.user.email },
+    );
     if (error) {
       return NextResponse.json({ error: "delete_failed" }, { status: 500 });
     }
-
-    await writeAudit({
-      admin_email: auth.user.email,
-      action: "admin_removed",
-      entity_type: "admin_user",
-      entity_id: id,
-    });
+    if (!deleted) {
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
 
     return NextResponse.json({ ok: true });
   });

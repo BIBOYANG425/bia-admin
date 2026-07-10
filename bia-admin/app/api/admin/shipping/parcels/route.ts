@@ -12,7 +12,6 @@ import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { PARCEL_STATUS_VALUES } from "@biboyang425/bia-shared/shipping";
 import { withRole } from "@/lib/auth/require-role";
-import { writeAudit } from "@/lib/admin/audit-log";
 import { sanitizeSearchTerm } from "@/lib/shipping/search-filter";
 
 const STATUS_SET = new Set<string>(PARCEL_STATUS_VALUES);
@@ -110,11 +109,11 @@ export async function POST(request: Request) {
     if (status === "received_cn") insert.received_at = new Date().toISOString();
 
     const admin = createBiaServiceRoleClient();
-    const { data, error } = await admin
-      .from("parcels")
-      .insert(insert)
-      .select()
-      .single();
+    const { data, error } = await admin.rpc("admin_create_parcel_atomic", {
+      p_parcel: insert,
+      p_actor_user_id: auth.user.id,
+      p_admin_email: auth.user.email,
+    });
 
     if (error) {
       return NextResponse.json(
@@ -122,27 +121,6 @@ export async function POST(request: Request) {
         { status: 500 },
       );
     }
-
-    // Seed the timeline: the status-change trigger only fires on UPDATE, so an
-    // officer-created parcel otherwise starts with an empty/misleading
-    // timeline (SR-5). Best-effort — creation already succeeded.
-    const { error: evErr } = await admin.from("parcel_events").insert({
-      parcel_id: data.id as string,
-      from_status: null,
-      to_status: status,
-      actor_user_id: auth.user.id,
-      actor_role: "admin",
-      note: "运营创建（walk-in / 代录）",
-    });
-    if (evErr) console.error("[parcel.create] parcel_events", evErr.message);
-
-    await writeAudit({
-      admin_email: auth.user.email,
-      action: "parcel.create",
-      entity_type: "parcel",
-      entity_id: data.id as string,
-      payload: { member_id, status },
-    });
 
     return NextResponse.json(data, { status: 201 });
   });

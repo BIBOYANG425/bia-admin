@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { withRole } from "@/lib/auth/require-role";
-import { writeAudit } from "@/lib/admin/audit-log";
+import { writeAuditRequired } from "@/lib/admin/audit-log";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -47,13 +47,20 @@ export async function POST(request: Request, ctx: RouteContext) {
       );
     }
 
-    await writeAudit({
-      admin_email: auth.user.email,
-      action: "invitation_resent",
-      entity_type: "admin_invitation",
-      entity_id: invitation.id,
-      payload: { email: invitation.email, role: invitation.role },
-    });
+    try {
+      await writeAuditRequired({
+        admin_email: auth.user.email,
+        action: "invitation_resent",
+        entity_type: "admin_invitation",
+        entity_id: invitation.id,
+        payload: { email: invitation.email, role: invitation.role },
+      });
+    } catch (error) {
+      return NextResponse.json(
+        { error: "audit_failed", details: String(error) },
+        { status: 500 },
+      );
+    }
 
     return NextResponse.json({ ok: true });
   });
@@ -64,28 +71,16 @@ export async function DELETE(request: Request, ctx: RouteContext) {
     const { id } = await ctx.params;
     const admin = createBiaServiceRoleClient();
 
-    const { data: invitation } = await admin
-      .from("admin_invitations")
-      .select("email")
-      .eq("id", id)
-      .maybeSingle();
-
-    const { error } = await admin
-      .from("admin_invitations")
-      .delete()
-      .eq("id", id)
-      .is("accepted_at", null);
+    const { data: invitation, error } = await admin.rpc(
+      "admin_revoke_invitation_atomic",
+      { p_invitation_id: id, p_admin_email: auth.user.email },
+    );
     if (error) {
       return NextResponse.json({ error: "delete_failed" }, { status: 500 });
     }
-
-    await writeAudit({
-      admin_email: auth.user.email,
-      action: "invitation_revoked",
-      entity_type: "admin_invitation",
-      entity_id: id,
-      payload: { email: invitation?.email ?? null },
-    });
+    if (!invitation) {
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
 
     return NextResponse.json({ ok: true });
   });

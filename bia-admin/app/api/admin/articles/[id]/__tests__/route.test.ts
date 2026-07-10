@@ -13,6 +13,7 @@ const {
   slugifyMock,
   withCollisionSuffixMock,
   deriveExcerptMock,
+  rpcMock,
 } = vi.hoisted(() => ({
   requireRoleMock: vi.fn(),
   auditMock: vi.fn(),
@@ -26,6 +27,7 @@ const {
   slugifyMock: vi.fn(),
   withCollisionSuffixMock: vi.fn(),
   deriveExcerptMock: vi.fn(),
+  rpcMock: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/require-role", () => ({
@@ -64,6 +66,7 @@ vi.mock("@/lib/admin/audit-log", () => ({
 vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
   createBiaServiceRoleClient: () => ({
     from: serviceFromMock,
+    rpc: rpcMock,
   }),
 }));
 
@@ -129,6 +132,18 @@ describe("/api/admin/articles/[id]", () => {
     slugifyMock.mockReset();
     withCollisionSuffixMock.mockReset();
     deriveExcerptMock.mockReset();
+    rpcMock.mockReset();
+    rpcMock.mockResolvedValue({
+      data: {
+        id: "article-1",
+        title: "New Title",
+        slug: "new-title-2",
+        html_clean: "<p>Clean</p>",
+        language: "zh",
+        status: "draft",
+      },
+      error: null,
+    });
 
     requireRoleMock.mockResolvedValue(editor);
     setupArticleTable();
@@ -161,7 +176,7 @@ describe("/api/admin/articles/[id]", () => {
     expect(updateMock).not.toHaveBeenCalled();
   });
 
-  it("PATCH updates draft fields, regenerates slug, sanitizes html, and audits", async () => {
+  it("PATCH updates draft fields, regenerates slug, sanitizes html, and audits atomically", async () => {
     maybeSingleMock.mockResolvedValue({
       data: {
         id: "article-1",
@@ -204,8 +219,10 @@ describe("/api/admin/articles/[id]", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(updateMock).toHaveBeenCalledWith(
+    expect(rpcMock).toHaveBeenCalledWith(
+      "admin_update_article_atomic",
       expect.objectContaining({
+        p_update: expect.objectContaining({
         title: "New Title",
         slug: "new-title-2",
         html_clean: "<p>Clean</p>",
@@ -213,15 +230,10 @@ describe("/api/admin/articles/[id]", () => {
         language: "zh",
         tags: ["ai"],
         cover_image_url: null,
+        }),
       }),
     );
-    expect(auditMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: "article.update",
-        entity_type: "article",
-        entity_id: "article-1",
-      }),
-    );
+    expect(auditMock).not.toHaveBeenCalled();
   });
 
   it("PATCH appends an article_revisions snapshot on save", async () => {
@@ -260,17 +272,51 @@ describe("/api/admin/articles/[id]", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(serviceFromMock).toHaveBeenCalledWith("article_revisions");
-    expect(insertMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        article_id: "article-1",
+    expect(rpcMock).toHaveBeenCalledWith(
+      "admin_update_article_atomic",
+      expect.objectContaining({ p_article_id: "article-1", p_edited_by: "u1" }),
+    );
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it("PATCH commits the article, revision, and audit in one RPC", async () => {
+    maybeSingleMock.mockResolvedValue({
+      data: {
+        id: "article-1",
+        slug: "welcome",
+        status: "draft",
         title: "Welcome",
-        body: "<p>Body</p>",
+        cover_image_url: null,
+      },
+      error: null,
+    });
+    rpcMock.mockResolvedValue({
+      data: {
+        id: "article-1",
+        title: "Welcome",
+        html_clean: "<p>Body</p>",
         language: "en",
         status: "draft",
-        edited_by: "u1",
-      }),
+      },
+      error: null,
+    });
+
+    const res = await PATCH(
+      makePatchRequest({ html: "<p>Body</p>" }),
+      ctxFor("article-1"),
     );
+
+    expect(res.status).toBe(200);
+    expect(rpcMock).toHaveBeenCalledWith("admin_update_article_atomic", {
+      p_admin_email: "editor@uscbia.com",
+      p_article_id: "article-1",
+      p_edited_by: "u1",
+      p_fields: ["html_clean", "excerpt"],
+      p_allow_published: false,
+      p_update: expect.objectContaining({ html_clean: "<p>Body</p>" }),
+    });
+    expect(insertMock).not.toHaveBeenCalled();
+    expect(auditMock).not.toHaveBeenCalled();
   });
 
   it("PATCH accepts and persists scheduled_publish_at", async () => {
@@ -310,9 +356,12 @@ describe("/api/admin/articles/[id]", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(updateMock).toHaveBeenCalledWith(
+    expect(rpcMock).toHaveBeenCalledWith(
+      "admin_update_article_atomic",
       expect.objectContaining({
-        scheduled_publish_at: "2026-07-01T12:00:00.000Z",
+        p_update: expect.objectContaining({
+          scheduled_publish_at: "2026-07-01T12:00:00.000Z",
+        }),
       }),
     );
   });

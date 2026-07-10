@@ -9,7 +9,7 @@ vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
   createBiaServiceRoleClient: createClientMock,
 }));
 
-import { writeAudit } from "../audit-log";
+import { writeAudit, writeAuditRequired } from "../audit-log";
 
 describe("writeAudit", () => {
   beforeEach(() => {
@@ -83,5 +83,26 @@ describe("writeAudit", () => {
         entity_type: "article",
       }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("writeAuditRequired", () => {
+  beforeEach(() => {
+    insertMock.mockReset();
+    createClientMock.mockReturnValue({
+      from: () => ({ insert: insertMock }),
+    });
+  });
+
+  it("rejects when the durable insert fails", async () => {
+    insertMock.mockResolvedValue({ data: null, error: { message: "boom" } });
+
+    await expect(
+      writeAuditRequired({
+        admin_email: "bobby@uscbia.com",
+        action: "admin_removed",
+        entity_type: "admin_user",
+      }),
+    ).rejects.toThrow("audit_write_failed: boom");
   });
 });

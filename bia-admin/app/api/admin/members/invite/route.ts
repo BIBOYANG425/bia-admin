@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createBiaServiceRoleClient } from "@biboyang425/bia-shared/supabase/service-role";
 import { withRole } from "@/lib/auth/require-role";
-import { writeAudit } from "@/lib/admin/audit-log";
+import { writeAuditRequired } from "@/lib/admin/audit-log";
 
 const InviteSchema = z.object({
   email: z.string().email().toLowerCase(),
@@ -56,20 +56,39 @@ export async function POST(request: Request) {
       },
     );
     if (inviteErr) {
-      await admin.from("admin_invitations").delete().eq("id", invitation.id);
+      const { error: rollbackError } = await admin
+        .from("admin_invitations")
+        .delete()
+        .eq("id", invitation.id);
+      if (rollbackError) {
+        return NextResponse.json(
+          {
+            error: "invitation_rollback_failed",
+            details: rollbackError.message,
+          },
+          { status: 500 },
+        );
+      }
       return NextResponse.json(
         { error: "email_send_failed", details: inviteErr.message },
         { status: 500 },
       );
     }
 
-    await writeAudit({
-      admin_email: ctx.user.email,
-      action: "invite_sent",
-      entity_type: "admin_invitation",
-      entity_id: invitation.id,
-      payload: { email, role },
-    });
+    try {
+      await writeAuditRequired({
+        admin_email: ctx.user.email,
+        action: "invite_sent",
+        entity_type: "admin_invitation",
+        entity_id: invitation.id,
+        payload: { email, role },
+      });
+    } catch (error) {
+      return NextResponse.json(
+        { error: "audit_failed", details: String(error) },
+        { status: 500 },
+      );
+    }
 
     return NextResponse.json({ ok: true, invitation });
   });

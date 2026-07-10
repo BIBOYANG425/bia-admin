@@ -117,12 +117,14 @@ export async function PATCH(request: Request, ctx: RouteContext) {
       return NextResponse.json({ error: "no_fields" }, { status: 400 });
     }
 
-    const { data, error } = await admin
-      .from("articles")
-      .update(update)
-      .eq("id", id)
-      .select()
-      .single();
+    const { data, error } = await admin.rpc("admin_update_article_atomic", {
+      p_article_id: id,
+      p_update: update,
+      p_edited_by: auth.adminUser.id,
+      p_admin_email: auth.user.email,
+      p_fields: fields,
+      p_allow_published: auth.role === "super_admin",
+    });
 
     if (error) {
       return NextResponse.json(
@@ -130,39 +132,14 @@ export async function PATCH(request: Request, ctx: RouteContext) {
         { status: 500 },
       );
     }
-
-    // Append a revision snapshot of the saved state. Best-effort: a failed
-    // history insert must not break the save the user just performed.
-    try {
-      const { error: revisionError } = await admin
-        .from("article_revisions")
-        .insert({
-          article_id: id,
-          title: data.title,
-          body: data.html_clean,
-          language: data.language,
-          status: data.status,
-          edited_by: auth.adminUser.id,
-        });
-      if (revisionError) {
-        console.error("article revision insert failed:", revisionError.message);
-      }
-    } catch (revisionError) {
-      console.error("article revision insert threw:", revisionError);
+    if (!data) {
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
 
     // Remove the previous cover object now that the row points elsewhere.
     if (coverChanged && previousCover) {
       await removeArticleCoverByUrl(previousCover);
     }
-
-    await writeAudit({
-      admin_email: auth.user.email,
-      action: "article.update",
-      entity_type: "article",
-      entity_id: id,
-      payload: { fields },
-    });
 
     return NextResponse.json(data);
   });

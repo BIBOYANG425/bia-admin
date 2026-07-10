@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { requireRoleMock, fromMock, rangeMock, insertSingleMock } = vi.hoisted(
+const { requireRoleMock, fromMock, rangeMock, insertSingleMock, rpcMock } = vi.hoisted(
   () => ({
     requireRoleMock: vi.fn(),
     fromMock: vi.fn(),
     rangeMock: vi.fn(),
     insertSingleMock: vi.fn(),
+    rpcMock: vi.fn(),
   }),
 );
 
@@ -35,7 +36,7 @@ vi.mock("@/lib/auth/require-role", () => ({
 vi.mock("@/lib/admin/audit-log", () => ({ writeAudit: vi.fn() }));
 
 vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
-  createBiaServiceRoleClient: () => ({ from: fromMock }),
+  createBiaServiceRoleClient: () => ({ from: fromMock, rpc: rpcMock }),
 }));
 
 import { writeAudit } from "@/lib/admin/audit-log";
@@ -144,6 +145,8 @@ describe("POST /api/admin/shipping/parcels", () => {
     requireRoleMock.mockReset();
     fromMock.mockReset();
     insertSingleMock.mockReset();
+    rpcMock.mockReset();
+    rpcMock.mockResolvedValue({ data: { id: "new-1" }, error: null });
     requireRoleMock.mockResolvedValue(editor);
     insertSingleMock.mockResolvedValue({ data: { id: "new-1" }, error: null });
     fromMock.mockImplementation(() => ({
@@ -169,47 +172,28 @@ describe("POST /api/admin/shipping/parcels", () => {
     expect(insertSingleMock).not.toHaveBeenCalled();
   });
 
-  // POST now writes two inserts: the parcel row + a seed parcel_events row
-  // (SR-5 — officer-created parcels otherwise start with an empty timeline).
-  function captureInserts() {
-    const captured: Record<string, Record<string, unknown>> = {};
-    fromMock.mockImplementation((table: string) => ({
-      insert: (p: Record<string, unknown>) => {
-        captured[table] = p;
-        if (table === "parcel_events") return Promise.resolve({ error: null });
-        return { select: () => ({ single: insertSingleMock }) };
-      },
-    }));
-    return captured;
-  }
-
   it("creates an expected parcel without received_at", async () => {
-    const captured = captureInserts();
-
     const res = await POST(
       postReq({ member_id: "BIA-1", description: "衣服一箱" }),
     );
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ id: "new-1" });
-    expect(captured.parcels).toMatchObject({
-      member_id: "BIA-1",
-      description: "衣服一箱",
-      status: "expected",
-    });
-    expect(captured.parcels).not.toHaveProperty("received_at");
-    // Mandatory-audit guardrail (SR-4): the write must be audited.
-    expect(vi.mocked(writeAudit)).toHaveBeenCalledWith(
+    expect(rpcMock).toHaveBeenCalledWith(
+      "admin_create_parcel_atomic",
       expect.objectContaining({
-        action: "parcel.create",
-        entity_type: "parcel",
-        entity_id: "new-1",
+        p_parcel: expect.objectContaining({
+          member_id: "BIA-1",
+          description: "衣服一箱",
+          status: "expected",
+        }),
       }),
     );
+    const parcel = rpcMock.mock.calls[0]![1].p_parcel;
+    expect(parcel).not.toHaveProperty("received_at");
+    expect(vi.mocked(writeAudit)).not.toHaveBeenCalled();
   });
 
   it("stamps received_at when status is received_cn", async () => {
-    const captured = captureInserts();
-
     const res = await POST(
       postReq({
         member_id: "BIA-2",
@@ -220,31 +204,49 @@ describe("POST /api/admin/shipping/parcels", () => {
       }),
     );
     expect(res.status).toBe(201);
-    expect(captured.parcels).toMatchObject({
+    expect(rpcMock.mock.calls[0]![1].p_parcel).toMatchObject({
       member_id: "BIA-2",
       status: "received_cn",
       tracking_cn: "SF123",
       weight_grams: 1500,
     });
-    expect(typeof captured.parcels!.received_at).toBe("string");
+    expect(typeof rpcMock.mock.calls[0]![1].p_parcel.received_at).toBe("string");
   });
 
   it("seeds the timeline with a parcel_events row on create (SR-5)", async () => {
-    const captured = captureInserts();
     const res = await POST(
       postReq({ member_id: "BIA-1", description: "衣服一箱" }),
     );
     expect(res.status).toBe(201);
-    expect(captured.parcel_events).toMatchObject({
-      parcel_id: "new-1",
-      from_status: null,
-      to_status: "expected",
-      actor_role: "admin",
+    expect(rpcMock).toHaveBeenCalledWith(
+      "admin_create_parcel_atomic",
+      expect.any(Object),
+    );
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it("creates the parcel, timeline, and audit in one RPC", async () => {
+    rpcMock.mockResolvedValue({ data: { id: "new-1", status: "expected" }, error: null });
+
+    const res = await POST(
+      postReq({ member_id: "BIA-1", description: "衣服一箱" }),
+    );
+
+    expect(res.status).toBe(201);
+    expect(rpcMock).toHaveBeenCalledWith("admin_create_parcel_atomic", {
+      p_actor_user_id: "e1",
+      p_admin_email: "editor@uscbia.com",
+      p_parcel: expect.objectContaining({
+        member_id: "BIA-1",
+        description: "衣服一箱",
+        status: "expected",
+      }),
     });
+    expect(fromMock).not.toHaveBeenCalled();
   });
 
   it("surfaces a DB insert error as create_failed", async () => {
-    insertSingleMock.mockResolvedValue({
+    rpcMock.mockResolvedValue({
       data: null,
       error: { message: "boom" },
     });
