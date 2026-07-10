@@ -51,10 +51,20 @@ drop view if exists public.squad_member_counts;
 -- ---------------------------------------------------------------------------
 -- Service-only functions and internal tables.
 -- ---------------------------------------------------------------------------
-alter function public.approve_event_submission(uuid, uuid) set search_path = '';
-revoke all on function public.approve_event_submission(uuid, uuid) from public;
-revoke all on function public.approve_event_submission(uuid, uuid) from anon, authenticated;
-grant execute on function public.approve_event_submission(uuid, uuid) to service_role;
+-- approve_event_submission is created by prerequisite migration
+-- 20260624000008 (same migrations/ dir). Guard the hardening with
+-- to_regprocedure so this migration applies cleanly even against a database
+-- where that prerequisite has not yet been applied (a non-existent function
+-- carries no execute exposure to lock down). In a normal ordered apply the
+-- older prerequisite runs first, so the function exists and gets hardened here.
+do $$ begin
+  if to_regprocedure('public.approve_event_submission(uuid, uuid)') is not null then
+    execute $q$alter function public.approve_event_submission(uuid, uuid) set search_path = ''$q$;
+    execute $q$revoke all on function public.approve_event_submission(uuid, uuid) from public$q$;
+    execute $q$revoke all on function public.approve_event_submission(uuid, uuid) from anon, authenticated$q$;
+    execute $q$grant execute on function public.approve_event_submission(uuid, uuid) to service_role$q$;
+  end if;
+end $$;
 
 alter function public.append_to_profile_block(uuid, text, text) set search_path = '';
 revoke all on function public.append_to_profile_block(uuid, text, text) from public;
@@ -193,6 +203,22 @@ begin
 end $$;
 revoke all on function public.release_student_followups(bigint[]) from public, anon, authenticated;
 grant execute on function public.release_student_followups(bigint[]) to service_role;
+
+-- outgoing_bubbles is created by prerequisite migration 20260625000002 (same
+-- migrations/ dir). George's claim-based delivery hard-depends on this table,
+-- so — unlike the skip-safe function guard above — we ENSURE it exists rather
+-- than skip its hardening: recreate defensively with create-if-not-exists
+-- (identical base shape to 20260625000002; a no-op once the prerequisite has
+-- been applied) so this migration is self-sufficient against a drifted database.
+create table if not exists public.outgoing_bubbles (
+  id uuid primary key default gen_random_uuid(),
+  handle text not null,
+  content text not null,
+  seq int not null,
+  send_at timestamptz not null,
+  sent_at timestamptz,
+  created_at timestamptz not null default now()
+);
 
 alter table public.outgoing_bubbles
   add column if not exists claimed_by text,
