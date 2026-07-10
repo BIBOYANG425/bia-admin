@@ -44,16 +44,6 @@ const editor = {
   adminUser: { id: "e1", email: "editor@uscbia.com" },
 };
 
-function thenable(result: unknown) {
-  const t: any = {
-    order: () => t,
-    limit: () => t,
-    eq: () => t,
-    in: () => t,
-    then: (resolve: (v: unknown) => void) => resolve(result),
-  };
-  return t;
-}
 function postReq(body: unknown) {
   return new Request("http://localhost/api/admin/events", {
     method: "POST",

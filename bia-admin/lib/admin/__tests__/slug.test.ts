@@ -14,8 +14,8 @@ import { findAvailableSlug } from "../slug";
 //   admin.from("articles").select("id, slug, status").in("slug", candidates)
 function makeAdmin(rows: unknown[], dbError: null | { message: string } = null) {
   return {
-    from: (_table: string) => ({
-      select: (_cols: string) => ({
+    from: () => ({
+      select: () => ({
         in: vi.fn().mockResolvedValue({ data: rows, error: dbError }),
       }),
     }),
