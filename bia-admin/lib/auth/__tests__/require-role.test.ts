@@ -127,8 +127,9 @@ describe("withRole", () => {
       data: { user: { id: "u1", email: "x@y" } },
     });
     mockSelfRead({ id: "u1", email: "x@y", role: "super_admin" });
-    const handler = vi.fn(async () =>
-      NextResponse.json({ ok: true }, { status: 200 }),
+    const handler = vi.fn(
+      async (_ctx: Parameters<Parameters<typeof withRole>[1]>[0]) =>
+        NextResponse.json({ ok: true }, { status: 200 }),
     );
     const res = await withRole("editor", handler);
     expect(res.status).toBe(200);
