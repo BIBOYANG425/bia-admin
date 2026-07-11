@@ -31,6 +31,7 @@ vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
 
 vi.mock("@/lib/admin/audit-log", () => ({
   writeAudit: mockWriteAudit,
+  writeAuditRequired: mockWriteAudit,
 }));
 
 import { POST } from "../route";
@@ -62,6 +63,7 @@ interface ServiceFromOpts {
   existingAdmin?: { id: string } | null;
   insertResult?: { data: unknown; error: unknown };
   deleteSpy?: ReturnType<typeof vi.fn>;
+  rollbackDeleteError?: unknown;
 }
 
 function setupServiceFrom(opts: ServiceFromOpts) {
@@ -69,6 +71,7 @@ function setupServiceFrom(opts: ServiceFromOpts) {
     existingAdmin = null,
     insertResult = { data: { id: "inv1" }, error: null },
     deleteSpy,
+    rollbackDeleteError = null,
   } = opts;
   mockServiceFrom.mockImplementation((table: string) => {
     if (table === "admin_users") {
@@ -90,7 +93,7 @@ function setupServiceFrom(opts: ServiceFromOpts) {
         delete: () => ({
           eq: (col: string, val: string) => {
             deleteSpy?.(col, val);
-            return Promise.resolve({ error: null });
+            return Promise.resolve({ error: rollbackDeleteError });
           },
         }),
       };
@@ -182,6 +185,26 @@ describe("POST /api/admin/members/invite", () => {
     });
     expect(deleteSpy).toHaveBeenCalledWith("id", "inv1");
     expect(mockWriteAudit).not.toHaveBeenCalled();
+  });
+
+  it("reports rollback failure instead of leaving a silent ghost invitation", async () => {
+    setupServerSelfRead("super_admin");
+    setupServiceFrom({
+      existingAdmin: null,
+      insertResult: { data: { id: "inv1" }, error: null },
+      rollbackDeleteError: { message: "delete blocked" },
+    });
+    mockInviteUserByEmail.mockResolvedValue({ error: { message: "smtp down" } });
+
+    const res = await POST(
+      makeRequest({ email: "ex@example.com", role: "editor" }),
+    );
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({
+      error: "invitation_rollback_failed",
+      details: "delete blocked",
+    });
   });
 
   it("200 success: invites email + writes audit log", async () => {

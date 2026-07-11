@@ -1,0 +1,512 @@
+-- Canonical security and transactional contracts identified by the 2026-07-10
+-- three-service audit. This migration is intentionally append-only.
+
+-- ---------------------------------------------------------------------------
+-- Public views: invoker semantics + least-privilege base-table columns.
+-- ---------------------------------------------------------------------------
+drop policy if exists sponsors_public_read on public.sponsors;
+create policy sponsors_public_read on public.sponsors
+  for select to anon, authenticated using (active);
+
+revoke all on table public.sponsors from anon, authenticated;
+grant select (id, name, tier, logo_url, website_url, display_order, active)
+  on table public.sponsors to anon, authenticated;
+grant select, insert, update, delete on table public.sponsors to service_role;
+
+create or replace view public.sponsors_public
+  with (security_invoker = true) as
+select id, name, tier, logo_url, website_url, display_order
+from public.sponsors
+where active;
+grant select on table public.sponsors_public to anon, authenticated;
+
+-- Fail closed if an application object still depends on the retired view. The
+-- view's own pg_rewrite entry is an internal dependency and is ignored.
+do $$
+begin
+  if to_regclass('public.squad_member_counts') is not null and exists (
+    select 1
+    from pg_depend d
+    where d.refobjid = to_regclass('public.squad_member_counts')
+      and d.deptype = 'n'
+      and not (
+        d.classid = 'pg_rewrite'::regclass
+        and d.objid in (
+          select r.oid from pg_rewrite r
+          where r.ev_class = to_regclass('public.squad_member_counts')
+        )
+      )
+  ) then
+    raise exception 'squad_member_counts_has_dependents';
+  end if;
+end
+$$;
+do $$ begin
+  if to_regclass('public.squad_member_counts') is not null then
+    execute 'revoke all on table public.squad_member_counts from public, anon, authenticated';
+  end if;
+end $$;
+drop view if exists public.squad_member_counts;
+
+-- ---------------------------------------------------------------------------
+-- Service-only functions and internal tables.
+-- ---------------------------------------------------------------------------
+-- approve_event_submission is created by prerequisite migration
+-- 20260624000008 (same migrations/ dir). Guard the hardening with
+-- to_regprocedure so this migration applies cleanly even against a database
+-- where that prerequisite has not yet been applied (a non-existent function
+-- carries no execute exposure to lock down). In a normal ordered apply the
+-- older prerequisite runs first, so the function exists and gets hardened here.
+do $$ begin
+  if to_regprocedure('public.approve_event_submission(uuid, uuid)') is not null then
+    execute $q$alter function public.approve_event_submission(uuid, uuid) set search_path = ''$q$;
+    execute $q$revoke all on function public.approve_event_submission(uuid, uuid) from public$q$;
+    execute $q$revoke all on function public.approve_event_submission(uuid, uuid) from anon, authenticated$q$;
+    execute $q$grant execute on function public.approve_event_submission(uuid, uuid) to service_role$q$;
+  end if;
+end $$;
+
+alter function public.append_to_profile_block(uuid, text, text) set search_path = '';
+revoke all on function public.append_to_profile_block(uuid, text, text) from public;
+revoke all on function public.append_to_profile_block(uuid, text, text) from anon, authenticated;
+grant execute on function public.append_to_profile_block(uuid, text, text) to service_role;
+
+alter function public.publish_scheduled_articles() set search_path = '';
+revoke all on function public.publish_scheduled_articles() from public;
+revoke all on function public.publish_scheduled_articles() from anon, authenticated;
+grant execute on function public.publish_scheduled_articles() to service_role;
+
+alter table public.user_observations enable row level security;
+revoke all on table public.user_observations from anon, authenticated;
+grant select, insert, update, delete on table public.user_observations to service_role;
+
+alter table public.proactive_raised_threads enable row level security;
+revoke all on table public.proactive_raised_threads from anon, authenticated;
+grant select, insert, update, delete on table public.proactive_raised_threads to service_role;
+
+alter table public.identity_conflicts enable row level security;
+revoke all on table public.identity_conflicts from anon, authenticated;
+grant select, insert, update, delete on table public.identity_conflicts to service_role;
+grant usage, select on sequence public.user_observations_id_seq to service_role;
+grant usage, select on sequence public.identity_conflicts_id_seq to service_role;
+
+-- Explicit service grants are required by the 2026 Data API defaults. These
+-- are the existing tables read or mutated by the RPCs and routes below.
+grant select, insert, update, delete on table
+  public.events,
+  public.event_attendance,
+  public.parcels,
+  public.parcel_events,
+  public.articles,
+  public.article_revisions,
+  public.admin_users,
+  public.admin_invitations,
+  public.admin_audit_log,
+  public.roommate_profiles,
+  public.pack_requests,
+  public.pack_request_parcels
+to service_role;
+
+-- ---------------------------------------------------------------------------
+-- Durable follow-up and outgoing-bubble claims.
+-- ---------------------------------------------------------------------------
+create table if not exists public.student_followups (
+  id bigint generated by default as identity primary key,
+  user_id uuid not null references public.students(user_id) on delete cascade,
+  content text not null,
+  scheduled_for timestamptz not null,
+  status text not null default 'pending',
+  created_at timestamptz not null default now(),
+  triggered_at timestamptz,
+  claimed_at timestamptz,
+  attempt_count integer not null default 0,
+  constraint student_followups_status_check
+    check (status in ('pending', 'claimed', 'triggered', 'cancelled'))
+);
+alter table public.student_followups add column if not exists claimed_at timestamptz;
+alter table public.student_followups add column if not exists attempt_count integer not null default 0;
+alter table public.student_followups drop constraint if exists student_followups_status_check;
+alter table public.student_followups add constraint student_followups_status_check
+  check (status in ('pending', 'claimed', 'triggered', 'cancelled'));
+create index if not exists student_followups_claim_idx
+  on public.student_followups (user_id, status, scheduled_for, claimed_at)
+  where status in ('pending', 'claimed');
+alter table public.student_followups enable row level security;
+drop policy if exists "user_can_read_own_followups" on public.student_followups;
+drop policy if exists "service_role_full_access" on public.student_followups;
+revoke all on table public.student_followups from anon, authenticated;
+grant select, insert, update, delete on table public.student_followups to service_role;
+grant usage, select on sequence public.student_followups_id_seq to service_role;
+
+create or replace function public.claim_due_student_followups(p_user_id uuid)
+returns setof public.student_followups
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  -- A worker crash cannot strand a claim forever. After five expired claims,
+  -- fail closed into cancelled instead of repeatedly prompting/sending it.
+  update public.student_followups f
+  set status = 'cancelled', claimed_at = null
+  where f.user_id = p_user_id and f.status = 'claimed'
+    and f.claimed_at <= now() - interval '5 minutes'
+    and f.attempt_count >= 5;
+
+  return query
+  with due as (
+    select f.id
+    from public.student_followups f
+    where f.user_id = p_user_id
+      and f.scheduled_for <= now()
+      and f.attempt_count < 5
+      and (
+        f.status = 'pending'
+        or (f.status = 'claimed' and f.claimed_at <= now() - interval '5 minutes')
+      )
+    order by f.scheduled_for, f.id
+    for update skip locked
+  )
+  update public.student_followups f
+  set status = 'claimed', claimed_at = now(), attempt_count = f.attempt_count + 1
+  from due
+  where f.id = due.id
+  returning f.*;
+end;
+$$;
+revoke all on function public.claim_due_student_followups(uuid) from public;
+revoke all on function public.claim_due_student_followups(uuid) from anon, authenticated;
+grant execute on function public.claim_due_student_followups(uuid) to service_role;
+
+create or replace function public.mark_student_followups_triggered(p_ids bigint[])
+returns integer language plpgsql security definer set search_path = '' as $$
+declare v_count integer;
+begin
+  update public.student_followups
+  set status = 'triggered', triggered_at = now(), claimed_at = null
+  where id = any(p_ids) and status = 'claimed';
+  get diagnostics v_count = row_count;
+  return v_count;
+end $$;
+revoke all on function public.mark_student_followups_triggered(bigint[]) from public, anon, authenticated;
+grant execute on function public.mark_student_followups_triggered(bigint[]) to service_role;
+
+create or replace function public.release_student_followups(p_ids bigint[])
+returns integer language plpgsql security definer set search_path = '' as $$
+declare v_count integer;
+begin
+  update public.student_followups
+  set status = 'pending', claimed_at = null
+  where id = any(p_ids) and status = 'claimed';
+  get diagnostics v_count = row_count;
+  return v_count;
+end $$;
+revoke all on function public.release_student_followups(bigint[]) from public, anon, authenticated;
+grant execute on function public.release_student_followups(bigint[]) to service_role;
+
+-- outgoing_bubbles is created by prerequisite migration 20260625000002 (same
+-- migrations/ dir). George's claim-based delivery hard-depends on this table,
+-- so — unlike the skip-safe function guard above — we ENSURE it exists rather
+-- than skip its hardening: recreate defensively with create-if-not-exists
+-- (identical base shape to 20260625000002; a no-op once the prerequisite has
+-- been applied) so this migration is self-sufficient against a drifted database.
+create table if not exists public.outgoing_bubbles (
+  id uuid primary key default gen_random_uuid(),
+  handle text not null,
+  content text not null,
+  seq int not null,
+  send_at timestamptz not null,
+  sent_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+alter table public.outgoing_bubbles
+  add column if not exists claimed_by text,
+  add column if not exists claim_expires_at timestamptz,
+  add column if not exists attempt_count integer not null default 0,
+  add column if not exists failed_at timestamptz,
+  add column if not exists idempotency_key uuid not null default gen_random_uuid();
+create unique index if not exists outgoing_bubbles_idempotency_key_idx
+  on public.outgoing_bubbles (idempotency_key);
+create index if not exists outgoing_bubbles_claim_idx
+  on public.outgoing_bubbles (send_at, claim_expires_at)
+  where sent_at is null and failed_at is null;
+alter table public.outgoing_bubbles enable row level security;
+revoke all on table public.outgoing_bubbles from anon, authenticated;
+grant select, insert, update, delete on table public.outgoing_bubbles to service_role;
+
+create or replace function public.claim_due_outgoing_bubbles(
+  p_now timestamptz,
+  p_worker_id text,
+  p_lease_seconds integer,
+  p_limit integer
+)
+returns setof public.outgoing_bubbles
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  update public.outgoing_bubbles b
+  set failed_at = p_now, claimed_by = null, claim_expires_at = null
+  where b.sent_at is null and b.failed_at is null
+    and b.attempt_count >= 5 and b.claim_expires_at <= p_now;
+
+  return query
+  with due as (
+    select b.id
+    from public.outgoing_bubbles b
+    where b.sent_at is null
+      and b.failed_at is null
+      and b.attempt_count < 5
+      and b.send_at <= p_now
+      and (b.claim_expires_at is null or b.claim_expires_at <= p_now)
+    order by b.send_at, b.id
+    limit greatest(least(p_limit, 100), 1)
+    for update skip locked
+  )
+  update public.outgoing_bubbles b
+  set claimed_by = p_worker_id,
+      claim_expires_at = p_now + make_interval(secs => greatest(p_lease_seconds, 1)),
+      attempt_count = b.attempt_count + 1
+  from due
+  where b.id = due.id
+  returning b.*;
+end;
+$$;
+revoke all on function public.claim_due_outgoing_bubbles(timestamptz, text, integer, integer) from public;
+revoke all on function public.claim_due_outgoing_bubbles(timestamptz, text, integer, integer) from anon, authenticated;
+grant execute on function public.claim_due_outgoing_bubbles(timestamptz, text, integer, integer) to service_role;
+
+create or replace function public.mark_outgoing_bubble_sent(p_id uuid, p_worker_id text)
+returns boolean language plpgsql security definer set search_path = '' as $$
+begin
+  update public.outgoing_bubbles
+  set sent_at = now(), claimed_by = null, claim_expires_at = null
+  where id = p_id and claimed_by = p_worker_id and sent_at is null;
+  return found;
+end $$;
+revoke all on function public.mark_outgoing_bubble_sent(uuid, text) from public, anon, authenticated;
+grant execute on function public.mark_outgoing_bubble_sent(uuid, text) to service_role;
+
+create or replace function public.release_outgoing_bubble(p_id uuid, p_worker_id text)
+returns boolean language plpgsql security definer set search_path = '' as $$
+begin
+  update public.outgoing_bubbles
+  set claimed_by = null,
+      claim_expires_at = null,
+      failed_at = case when attempt_count >= 5 then now() else failed_at end
+  where id = p_id and claimed_by = p_worker_id and sent_at is null;
+  return found;
+end $$;
+revoke all on function public.release_outgoing_bubble(uuid, text) from public, anon, authenticated;
+grant execute on function public.release_outgoing_bubble(uuid, text) to service_role;
+
+-- ---------------------------------------------------------------------------
+-- Admin mutations: business row + invariant history + audit in one transaction.
+-- ---------------------------------------------------------------------------
+create or replace function public.admin_delete_event_atomic(
+  p_event_id uuid,
+  p_admin_email text
+)
+returns boolean language plpgsql security definer set search_path = '' as $$
+begin
+  perform 1 from public.events where id = p_event_id for update;
+  if not found then return false; end if;
+  delete from public.event_attendance where event_id = p_event_id;
+  delete from public.events where id = p_event_id;
+  insert into public.admin_audit_log(admin_email, action, entity_type, entity_id, payload)
+  values (p_admin_email, 'event.delete', 'event', p_event_id::text, '{}'::jsonb);
+  return true;
+end $$;
+revoke all on function public.admin_delete_event_atomic(uuid, text) from public;
+revoke all on function public.admin_delete_event_atomic(uuid, text) from anon, authenticated;
+grant execute on function public.admin_delete_event_atomic(uuid, text) to service_role;
+
+create or replace function public.admin_create_parcel_atomic(
+  p_parcel jsonb,
+  p_actor_user_id uuid,
+  p_admin_email text
+)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v_parcel public.parcels;
+begin
+  insert into public.parcels(
+    member_id, description, tracking_cn, carrier_cn, status, weight_grams, received_at
+  ) values (
+    p_parcel->>'member_id', p_parcel->>'description', nullif(p_parcel->>'tracking_cn', ''),
+    nullif(p_parcel->>'carrier_cn', ''),
+    coalesce((p_parcel->>'status')::public.parcel_status, 'expected'::public.parcel_status),
+    nullif(p_parcel->>'weight_grams', '')::integer,
+    nullif(p_parcel->>'received_at', '')::timestamptz
+  ) returning * into v_parcel;
+
+  insert into public.parcel_events(
+    parcel_id, from_status, to_status, actor_user_id, actor_role, note
+  ) values (
+    v_parcel.id, null, v_parcel.status, p_actor_user_id, 'admin',
+    '运营创建（walk-in / 代录）'
+  );
+  insert into public.admin_audit_log(admin_email, action, entity_type, entity_id, payload)
+  values (p_admin_email, 'parcel.create', 'parcel', v_parcel.id::text,
+    jsonb_build_object('member_id', v_parcel.member_id, 'status', v_parcel.status));
+  return to_jsonb(v_parcel);
+end $$;
+revoke all on function public.admin_create_parcel_atomic(jsonb, uuid, text) from public;
+revoke all on function public.admin_create_parcel_atomic(jsonb, uuid, text) from anon, authenticated;
+grant execute on function public.admin_create_parcel_atomic(jsonb, uuid, text) to service_role;
+
+create or replace function public.admin_update_article_atomic(
+  p_article_id uuid,
+  p_update jsonb,
+  p_edited_by uuid,
+  p_admin_email text,
+  p_fields text[],
+  p_allow_published boolean
+)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v_old public.articles; v_new public.articles;
+begin
+  if (p_update - array['title','slug','html_clean','excerpt','language','tags','cover_image_url','scheduled_publish_at']) <> '{}'::jsonb then
+    raise exception 'invalid_article_update_key';
+  end if;
+  select * into v_old from public.articles where id = p_article_id for update;
+  if not found then return null; end if;
+  if v_old.status = 'published' and not p_allow_published then
+    raise exception 'published_locked';
+  end if;
+  v_new := jsonb_populate_record(v_old, p_update);
+  update public.articles set
+    title = v_new.title, slug = v_new.slug, html_clean = v_new.html_clean,
+    excerpt = v_new.excerpt, language = v_new.language, tags = v_new.tags,
+    cover_image_url = v_new.cover_image_url,
+    scheduled_publish_at = v_new.scheduled_publish_at
+  where id = p_article_id returning * into v_new;
+  insert into public.article_revisions(article_id, title, body, language, status, edited_by)
+  values (v_new.id, v_new.title, v_new.html_clean, v_new.language, v_new.status, p_edited_by);
+  insert into public.admin_audit_log(admin_email, action, entity_type, entity_id, payload)
+  values (p_admin_email, 'article.update', 'article', p_article_id::text,
+    jsonb_build_object('fields', p_fields));
+  return to_jsonb(v_new);
+end $$;
+revoke all on function public.admin_update_article_atomic(uuid, jsonb, uuid, text, text[], boolean) from public;
+revoke all on function public.admin_update_article_atomic(uuid, jsonb, uuid, text, text[], boolean) from anon, authenticated;
+grant execute on function public.admin_update_article_atomic(uuid, jsonb, uuid, text, text[], boolean) to service_role;
+
+create or replace function public.admin_update_member_role_atomic(
+  p_admin_user_id uuid, p_role text, p_admin_email text
+)
+returns boolean language plpgsql security definer set search_path = '' as $$
+begin
+  if p_role not in ('super_admin', 'editor', 'viewer') then
+    raise exception 'invalid_admin_role';
+  end if;
+  update public.admin_users set role = p_role where id = p_admin_user_id;
+  if not found then return false; end if;
+  insert into public.admin_audit_log(admin_email, action, entity_type, entity_id, payload)
+  values (p_admin_email, 'role_changed', 'admin_user', p_admin_user_id::text,
+    jsonb_build_object('role', p_role));
+  return true;
+end $$;
+revoke all on function public.admin_update_member_role_atomic(uuid, text, text) from public, anon, authenticated;
+grant execute on function public.admin_update_member_role_atomic(uuid, text, text) to service_role;
+
+create or replace function public.admin_delete_member_atomic(
+  p_admin_user_id uuid, p_admin_email text
+)
+returns boolean language plpgsql security definer set search_path = '' as $$
+begin
+  delete from public.admin_users where id = p_admin_user_id;
+  if not found then return false; end if;
+  insert into public.admin_audit_log(admin_email, action, entity_type, entity_id, payload)
+  values (p_admin_email, 'admin_removed', 'admin_user', p_admin_user_id::text, '{}'::jsonb);
+  return true;
+end $$;
+revoke all on function public.admin_delete_member_atomic(uuid, text) from public, anon, authenticated;
+grant execute on function public.admin_delete_member_atomic(uuid, text) to service_role;
+
+create or replace function public.admin_revoke_invitation_atomic(
+  p_invitation_id uuid, p_admin_email text
+)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v_invitation public.admin_invitations;
+begin
+  delete from public.admin_invitations
+  where id = p_invitation_id and accepted_at is null
+  returning * into v_invitation;
+  if not found then return null; end if;
+  insert into public.admin_audit_log(admin_email, action, entity_type, entity_id, payload)
+  values (p_admin_email, 'invitation_revoked', 'admin_invitation', p_invitation_id::text,
+    jsonb_build_object('email', v_invitation.email));
+  return to_jsonb(v_invitation);
+end $$;
+revoke all on function public.admin_revoke_invitation_atomic(uuid, text) from public, anon, authenticated;
+grant execute on function public.admin_revoke_invitation_atomic(uuid, text) to service_role;
+
+-- ---------------------------------------------------------------------------
+-- Roommate ownership and user pack-request invariants.
+-- ---------------------------------------------------------------------------
+do $$
+begin
+  if exists (
+    select 1 from public.roommate_profiles
+    where user_id is not null group by user_id having count(*) > 1
+  ) then
+    raise exception 'roommate_profiles_duplicate_user_id';
+  end if;
+end $$;
+create unique index if not exists roommate_profiles_user_id_unique_idx
+  on public.roommate_profiles (user_id) where user_id is not null;
+
+create or replace function public.create_pack_request(
+  p_parcel_ids uuid[],
+  p_preferred_method text default null,
+  p_urgency_note text default null,
+  p_contact text default null,
+  p_user_note text default null
+)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_ids uuid[];
+  v_count integer;
+  v_student_id uuid;
+  v_member_id text;
+  v_request public.pack_requests;
+begin
+  if v_user_id is null then raise exception 'not_authenticated'; end if;
+  select array_agg(distinct x order by x) into v_ids from unnest(p_parcel_ids) x;
+  if coalesce(cardinality(v_ids), 0) = 0 then raise exception 'parcel_ids_required'; end if;
+
+  perform 1 from public.parcels p where p.id = any(v_ids) order by p.id for update;
+  select s.id, s.member_id into v_student_id, v_member_id
+  from public.students s where s.user_id = v_user_id for update;
+  if not found or v_member_id is null then raise exception 'shipping_identity_missing'; end if;
+
+  select count(*) into v_count
+  from public.parcels p
+  where p.id = any(v_ids)
+    and p.user_id = v_user_id
+    and p.student_id is not distinct from v_student_id
+    and p.member_id = v_member_id
+    and p.status = 'received_cn';
+  if v_count <> cardinality(v_ids) then raise exception 'pack_request_invalid_parcels'; end if;
+  if exists (
+    select 1 from public.pack_request_parcels prp
+    join public.pack_requests pr on pr.id = prp.request_id
+    where prp.parcel_id = any(v_ids) and pr.status in ('pending','contacted','approved')
+  ) then raise exception 'pack_request_already_open'; end if;
+
+  insert into public.pack_requests(user_id, student_id, member_id, preferred_method, urgency_note, contact, user_note)
+  values (v_user_id, v_student_id, v_member_id,
+    nullif(p_preferred_method, '')::public.shipping_method,
+    nullif(p_urgency_note, ''), nullif(p_contact, ''), nullif(p_user_note, ''))
+  returning * into v_request;
+  insert into public.pack_request_parcels(request_id, parcel_id)
+  select v_request.id, x from unnest(v_ids) x;
+  return to_jsonb(v_request);
+end $$;
+revoke all on function public.create_pack_request(uuid[], text, text, text, text) from public;
+revoke all on function public.create_pack_request(uuid[], text, text, text, text) from anon;
+revoke all on function public.create_pack_request(uuid[], text, text, text, text) from authenticated;
+grant execute on function public.create_pack_request(uuid[], text, text, text, text) to authenticated;

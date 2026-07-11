@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { requireRoleMock, fromMock } = vi.hoisted(() => ({
+const { requireRoleMock, fromMock, rpcMock } = vi.hoisted(() => ({
   requireRoleMock: vi.fn(),
   fromMock: vi.fn(),
+  rpcMock: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/require-role", () => ({
@@ -29,14 +30,14 @@ vi.mock("@/lib/auth/require-role", () => ({
 }));
 
 vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
-  createBiaServiceRoleClient: () => ({ from: fromMock }),
+  createBiaServiceRoleClient: () => ({ from: fromMock, rpc: rpcMock }),
 }));
 
 // writeAudit pulls its own service-role client from the package root, so mock
 // the helper directly to keep it a no-op in tests.
 vi.mock("@/lib/admin/audit-log", () => ({ writeAudit: vi.fn() }));
 
-import { PATCH } from "../route";
+import { DELETE, PATCH } from "../route";
 
 const editor = {
   user: { id: "e1", email: "editor@uscbia.com" },
@@ -58,7 +59,34 @@ function req(method: string, body?: unknown) {
 beforeEach(() => {
   requireRoleMock.mockReset();
   fromMock.mockReset();
+  rpcMock.mockReset();
   requireRoleMock.mockResolvedValue(editor);
+});
+
+describe("DELETE /api/admin/events/[id]", () => {
+  it("uses the atomic delete+audit RPC", async () => {
+    requireRoleMock.mockResolvedValue({ ...editor, role: "super_admin" });
+    rpcMock.mockResolvedValue({ data: true, error: null });
+
+    const res = await DELETE(req("DELETE"), ctxFor("e1"));
+
+    expect(res.status).toBe(200);
+    expect(rpcMock).toHaveBeenCalledWith("admin_delete_event_atomic", {
+      p_admin_email: "editor@uscbia.com",
+      p_event_id: "e1",
+    });
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when the atomic RPC deletes no event", async () => {
+    requireRoleMock.mockResolvedValue({ ...editor, role: "super_admin" });
+    rpcMock.mockResolvedValue({ data: false, error: null });
+
+    const res = await DELETE(req("DELETE"), ctxFor("missing"));
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+  });
 });
 
 describe("PATCH /api/admin/events/[id]", () => {

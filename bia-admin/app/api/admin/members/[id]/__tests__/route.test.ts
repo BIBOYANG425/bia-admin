@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockGetUser, mockServerFrom, mockServiceFrom, mockWriteAudit } =
+const { mockGetUser, mockServerFrom, mockWriteAudit, mockRpc } =
   vi.hoisted(() => ({
     mockGetUser: vi.fn(),
     mockServerFrom: vi.fn(),
-    mockServiceFrom: vi.fn(),
     mockWriteAudit: vi.fn(),
+    mockRpc: vi.fn(),
   }));
 
 vi.mock("@biboyang425/bia-shared/next/supabase/server", () => ({
@@ -18,12 +18,13 @@ vi.mock("@biboyang425/bia-shared/next/supabase/server", () => ({
 // The factory moved to the server-only subpath (bia-shared 1.0.0) — mock it there.
 vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
   createBiaServiceRoleClient: () => ({
-      from: mockServiceFrom,
+      rpc: mockRpc,
     }),
 }));
 
 vi.mock("@/lib/admin/audit-log", () => ({
   writeAudit: mockWriteAudit,
+  writeAuditRequired: mockWriteAudit,
 }));
 
 import { PATCH, DELETE } from "../route";
@@ -51,28 +52,6 @@ function setupServerSelfRead(
   }
 }
 
-interface ServiceFromOpts {
-  updateError?: unknown;
-  deleteError?: unknown;
-}
-
-function setupServiceFrom(opts: ServiceFromOpts = {}) {
-  const { updateError = null, deleteError = null } = opts;
-  mockServiceFrom.mockImplementation((table: string) => {
-    if (table === "admin_users") {
-      return {
-        update: () => ({
-          eq: () => Promise.resolve({ error: updateError }),
-        }),
-        delete: () => ({
-          eq: () => Promise.resolve({ error: deleteError }),
-        }),
-      };
-    }
-    throw new Error(`unexpected table: ${table}`);
-  });
-}
-
 function makePatchRequest(id: string, body: unknown) {
   return new Request(`http://localhost/api/admin/members/${id}`, {
     method: "PATCH",
@@ -95,8 +74,8 @@ describe("PATCH /api/admin/members/[id]", () => {
   beforeEach(() => {
     mockGetUser.mockReset();
     mockServerFrom.mockReset();
-    mockServiceFrom.mockReset();
     mockWriteAudit.mockReset();
+    mockRpc.mockReset();
     mockGetUser.mockResolvedValue({
       data: { user: { id: "u1", email: "x@y" } },
     });
@@ -130,7 +109,7 @@ describe("PATCH /api/admin/members/[id]", () => {
 
   it("200 success: updates role + writes audit log", async () => {
     setupServerSelfRead("super_admin");
-    setupServiceFrom({ updateError: null });
+    mockRpc.mockResolvedValue({ data: true, error: null });
     const res = await PATCH(
       makePatchRequest("u2", { role: "editor" }),
       ctxFor("u2"),
@@ -138,13 +117,26 @@ describe("PATCH /api/admin/members/[id]", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
 
-    expect(mockWriteAudit).toHaveBeenCalledWith({
-      admin_email: "x@y",
-      action: "role_changed",
-      entity_type: "admin_user",
-      entity_id: "u2",
-      payload: { role: "editor" },
+    expect(mockRpc).toHaveBeenCalledWith("admin_update_member_role_atomic", {
+      p_admin_user_id: "u2",
+      p_role: "editor",
+      p_admin_email: "x@y",
     });
+    expect(mockWriteAudit).not.toHaveBeenCalled();
+  });
+
+  it("404 when role update affects no admin row", async () => {
+    setupServerSelfRead("super_admin");
+    mockRpc.mockResolvedValue({ data: false, error: null });
+
+    const res = await PATCH(
+      makePatchRequest("missing", { role: "editor" }),
+      ctxFor("missing"),
+    );
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+    expect(mockWriteAudit).not.toHaveBeenCalled();
   });
 });
 
@@ -152,8 +144,8 @@ describe("DELETE /api/admin/members/[id]", () => {
   beforeEach(() => {
     mockGetUser.mockReset();
     mockServerFrom.mockReset();
-    mockServiceFrom.mockReset();
     mockWriteAudit.mockReset();
+    mockRpc.mockReset();
     mockGetUser.mockResolvedValue({
       data: { user: { id: "u1", email: "x@y" } },
     });
@@ -168,16 +160,26 @@ describe("DELETE /api/admin/members/[id]", () => {
 
   it("200 success: deletes admin + writes audit log", async () => {
     setupServerSelfRead("super_admin");
-    setupServiceFrom({ deleteError: null });
+    mockRpc.mockResolvedValue({ data: true, error: null });
     const res = await DELETE(makeDeleteRequest("u2"), ctxFor("u2"));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
 
-    expect(mockWriteAudit).toHaveBeenCalledWith({
-      admin_email: "x@y",
-      action: "admin_removed",
-      entity_type: "admin_user",
-      entity_id: "u2",
+    expect(mockRpc).toHaveBeenCalledWith("admin_delete_member_atomic", {
+      p_admin_user_id: "u2",
+      p_admin_email: "x@y",
     });
+    expect(mockWriteAudit).not.toHaveBeenCalled();
+  });
+
+  it("404 when delete affects no admin row", async () => {
+    setupServerSelfRead("super_admin");
+    mockRpc.mockResolvedValue({ data: false, error: null });
+
+    const res = await DELETE(makeDeleteRequest("missing"), ctxFor("missing"));
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+    expect(mockWriteAudit).not.toHaveBeenCalled();
   });
 });

@@ -6,12 +6,14 @@ const {
   mockServiceFrom,
   mockWriteAudit,
   mockInviteUserByEmail,
+  mockRpc,
 } = vi.hoisted(() => ({
   mockGetUser: vi.fn(),
   mockServerFrom: vi.fn(),
   mockServiceFrom: vi.fn(),
   mockWriteAudit: vi.fn(),
   mockInviteUserByEmail: vi.fn(),
+  mockRpc: vi.fn(),
 }));
 
 vi.mock("@biboyang425/bia-shared/next/supabase/server", () => ({
@@ -25,12 +27,14 @@ vi.mock("@biboyang425/bia-shared/next/supabase/server", () => ({
 vi.mock("@biboyang425/bia-shared/supabase/service-role", () => ({
   createBiaServiceRoleClient: () => ({
       from: mockServiceFrom,
+      rpc: mockRpc,
       auth: { admin: { inviteUserByEmail: mockInviteUserByEmail } },
     }),
 }));
 
 vi.mock("@/lib/admin/audit-log", () => ({
   writeAudit: mockWriteAudit,
+  writeAuditRequired: mockWriteAudit,
 }));
 
 import { DELETE, POST } from "../route";
@@ -61,10 +65,12 @@ function setupServerSelfRead(
 interface ServiceFromOpts {
   invitationLookup?: { email: string } | null;
   deleteError?: unknown;
+  deletedRows?: Array<{ id: string; email: string }>;
 }
 
 function setupServiceFrom(opts: ServiceFromOpts = {}) {
-  const { invitationLookup = null, deleteError = null } = opts;
+  const { invitationLookup = null, deleteError = null, deletedRows = [] } = opts;
+  mockRpc.mockResolvedValue({ data: deletedRows[0] ?? null, error: deleteError });
   mockServiceFrom.mockImplementation((table: string) => {
     if (table === "admin_invitations") {
       return {
@@ -75,7 +81,16 @@ function setupServiceFrom(opts: ServiceFromOpts = {}) {
         }),
         delete: () => ({
           eq: () => ({
-            is: () => Promise.resolve({ error: deleteError }),
+            is: () => ({
+              select: () => ({
+                maybeSingle: () => Promise.resolve({
+                  data: deletedRows[0] ?? null,
+                  error: deleteError,
+                }),
+              }),
+              then: (resolve: (value: unknown) => unknown) =>
+                Promise.resolve({ error: deleteError }).then(resolve),
+            }),
           }),
         }),
       };
@@ -129,6 +144,7 @@ describe("DELETE /api/admin/members/invitations/[id]", () => {
     mockServiceFrom.mockReset();
     mockWriteAudit.mockReset();
     mockInviteUserByEmail.mockReset();
+    mockRpc.mockReset();
     mockGetUser.mockResolvedValue({
       data: { user: { id: "u1", email: "x@y" } },
     });
@@ -145,19 +161,29 @@ describe("DELETE /api/admin/members/invitations/[id]", () => {
     setupServiceFrom({
       invitationLookup: { email: "officer@y" },
       deleteError: null,
+      deletedRows: [{ id: "inv1", email: "officer@y" }],
     });
 
     const res = await DELETE(makeRequest("inv1"), ctxFor("inv1"));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
 
-    expect(mockWriteAudit).toHaveBeenCalledWith({
-      admin_email: "x@y",
-      action: "invitation_revoked",
-      entity_type: "admin_invitation",
-      entity_id: "inv1",
-      payload: { email: "officer@y" },
+    expect(mockRpc).toHaveBeenCalledWith("admin_revoke_invitation_atomic", {
+      p_invitation_id: "inv1",
+      p_admin_email: "x@y",
     });
+    expect(mockWriteAudit).not.toHaveBeenCalled();
+  });
+
+  it("404 when no pending invitation is revoked", async () => {
+    setupServerSelfRead("super_admin");
+    setupServiceFrom({ invitationLookup: null, deletedRows: [] });
+
+    const res = await DELETE(makeRequest("missing"), ctxFor("missing"));
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+    expect(mockWriteAudit).not.toHaveBeenCalled();
   });
 });
 
@@ -168,6 +194,7 @@ describe("POST /api/admin/members/invitations/[id] (resend)", () => {
     mockServiceFrom.mockReset();
     mockWriteAudit.mockReset();
     mockInviteUserByEmail.mockReset();
+    mockRpc.mockReset();
     mockGetUser.mockResolvedValue({
       data: { user: { id: "u1", email: "x@y" } },
     });

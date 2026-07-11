@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { roleCalls } = vi.hoisted(() => ({ roleCalls: [] as string[] }));
 
 vi.mock("@/lib/auth/require-role", () => ({
-  withRole: (min: unknown, _handler: unknown) => {
+  withRole: (min: unknown) => {
     roleCalls.push(String(min));
     return new Response(null, { status: 204 });
   },

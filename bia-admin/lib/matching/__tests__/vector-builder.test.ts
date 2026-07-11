@@ -16,7 +16,7 @@ function makeAdmin() {
     from: vi.fn((table: string) => ({
       upsert: (rows: unknown) => { upserts.push({ table, rows }); return Promise.resolve({ error: null }); },
       update: (row: unknown) => ({ eq: () => { updates.push({ table, row }); return Promise.resolve({ error: null }); } }),
-      delete: () => ({ eq: () => ({ not: (_c: string, _o: string, _v: string) => { deletes.push(table); return Promise.resolve({ error: null }); } }) }),
+      delete: () => ({ eq: () => ({ not: () => { deletes.push(table); return Promise.resolve({ error: null }); } }) }),
     })),
   };
   return { admin: admin as never, upserts, deletes, updates };

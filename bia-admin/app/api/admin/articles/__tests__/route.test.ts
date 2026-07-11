@@ -83,16 +83,6 @@ function makePostRequest(body: unknown) {
   });
 }
 
-function thenableQuery<T>(result: T) {
-  const query = {
-    order: vi.fn(() => query),
-    eq: vi.fn(() => query),
-    then: (resolve: (value: T) => unknown, reject: (reason: unknown) => unknown) =>
-      Promise.resolve(result).then(resolve, reject),
-  };
-  return query;
-}
-
 describe("/api/admin/articles", () => {
   beforeEach(() => {
     requireRoleMock.mockReset();

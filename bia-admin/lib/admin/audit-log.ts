@@ -59,3 +59,22 @@ export async function writeAudit(entry: AuditEntry): Promise<void> {
     // Do not throw — audit failure should not break user-facing actions.
   }
 }
+
+/**
+ * Durable variant for mutations that must not report success without an audit
+ * record. Prefer a transactional database RPC when the business write can be
+ * moved into Postgres; use this at external-system boundaries where it cannot.
+ */
+export async function writeAuditRequired(entry: AuditEntry): Promise<void> {
+  const admin = createBiaServiceRoleClient();
+  const { error } = await admin.from("admin_audit_log").insert({
+    admin_email: entry.admin_email,
+    action: entry.action,
+    entity_type: entry.entity_type,
+    entity_id: entry.entity_id ?? null,
+    payload: entry.payload ?? {},
+  });
+  if (error) {
+    throw new Error(`audit_write_failed: ${error.message}`);
+  }
+}
